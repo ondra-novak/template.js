@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Template.js test page</title>
+</head>
+<body>
+<script type="text/javascript" src="template.js"></script>
+
+<template id="ppltable">
+<table>
+<tr><th>First Name</th><th>Last Name</th><th>Year of birth</th><th>Sex</th><th>Properties</th></tr>
+<tr data-name="rows" >
+	<td data-name="first_name"></td>
+	<td data-name="last_name"></td>
+	<td data-name="birth"></td>
+	<td data-name="sex"></td>
+	<td data-name="properties"></td>	
+	<td><button data-name="editbutt">Edit</button></td>
+</tr>
+</table>
+</template>
+<template id="fillform">
+<table>
+<tr><td>First name</td><td><input type="text" name="first_name" /></td></tr>
+<tr><td>Last name</td><td><input type="text" name="last_name" /></td></tr>
+<tr><td>Year of birth</td><td><input type="text" name="birth" /></td></tr>
+<tr><td>Sex</td><td><input type="radio" name="sex" value="male"/> Male<br /><input type="radio" name="sex" value="female"/> Female</td></tr>
+<tr><td>Properties</td><td>
+		<input type="checkbox" name="properties" value="tall"/> Tall<br />
+		<input type="checkbox" name="properties" value="fat"/> Fat<br />
+		<input type="checkbox" name="properties" value="hair"/> Have hair<br />
+		<input type="checkbox" name="properties" value="mustache"/> Have mustache</td></tr>
+</table>
+</template>
+<template id="mainpage">
+<div data-name="tablepart"></div>
+<div data-name="formpart"></div>
+</template>
+<div id="workspace"></div>
+</body>
+</html>
+
