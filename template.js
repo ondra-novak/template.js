@@ -51,7 +51,7 @@ var TemplateJS = function(){
 	function View(elem) {
 		if (typeof elem == "string") elem = document.getElementById(elem);
 		this.root = elem;
-		this.rebuildDataMap();
+		this.rebuildMap();		
 		
 	};
 	
@@ -62,23 +62,59 @@ var TemplateJS = function(){
 	}
 	
 	
-	
+	///Get root element of the view
 	View.prototype.getRoot = function() {
 		return this.root;
 	}
 	
+	///Replace content of the view
+	/**
+	 * @param elem element which is put into the view. It can be also instance of View
+	 */
 	View.prototype.setContent = function(elem) {
 		if (elem instanceof View) 
-			return this.setContent(elem.getRoot());
+			return this.setContent(elem.getRoot());		
 		this.clearContent();
 		this.root.appendChild(elem);
-		this.rebuildDataMap();
+		this.rebuildMap();
 	};
 	
+	///Replace content of the view generated from the template
+	/**
+	 * @param templateRef ID of the template
+	 */
 	View.prototype.loadTemplate = function(templateRef) {
 		this.setContent(loadTemplate(templateRef));
 	}
 	
+	///Visibility state - whole view is hidden
+	View.HIDDEN = 0;
+	///Visibility state - whole view is visible
+	View.VISIBLE = 1;
+	///Visibility state - whole view is hidden, but still occupies area (transparent)
+	View.TRANSPARENT=-1
+	
+	View.prototype.setVisibility = function(vis_state) {
+		if (vis_state == View.VISIBLE) {
+			this.root.hidden = false;
+			this.root.style.visibility = "inherit";
+		} else if (vis_state == View.TRANSPARENT) {
+			this.root.hidden = false;
+			this.root.style.visibility = "hidden";			
+		} else {
+			this.root.hidden = true;
+		}
+	}
+	
+	View.prototype.show = function() {
+		this.setVisibility(View.VISIBLE);
+	}
+	
+	View.prototype.hide = function() {
+		this.setVisibility(View.HIDDEN);
+	}
+
+
 	View.clearContent = function(element) {
 		var event = new Event("remove");
 		var x =  element.firstChild
@@ -96,30 +132,58 @@ var TemplateJS = function(){
 	};
 	
 	///Creates view at element specified by its name
-	View.prototype.createView = function(name) {
+	/**@param name name of the element used as root of View
+	 * @param visibility allows to specify visibility. Default is hidden, 
+	 * 		so if you want to show the view, you have to call show 
+	 */
+	View.prototype.createView = function(name, visibility /* =View.HIDDEN */) {
 		var elem = this.byName[name];
-		if (!elem) throw new Error("Cannot find item "+name);
+		if (!elem) throw new Error("Cannot find item "+name);		
 		if (elem.length != 1) throw new Error("The element must be unique "+name);
-		return new View(elem[0]);		
+		var view = new View(elem[0]);
+		view.setVisibility(visibility);
+		return view;
 	}
 	
-	View.prototype.markSelector = function(className) {
-		var items = this.root.querySelectorAll(className);
+	///Returns the name of class used for the mark() and unmark()
+	/**
+	 * If you need to use different name, you have to override this value
+	 */
+	View.prototype.markClass = "mark";	
+	
+	///Marks every element specified as CSS selector with a mark
+	/**
+	 * The mark class is stored in variable markClass. 
+	 * This function is useful to mark elements for various purposes. For example if
+	 * you need to highlight an error code, you can use selectors equal to error code. It
+	 * will mark all elements that contain anything relate to that error code. Marked
+	 * elements can be highlighted, or there can be hidden message which is exposed once
+	 * it is marked
+	 */
+	View.prototype.mark = function(selector) {
+		var items = this.root.querySelectorAll(selector);
 		var cnt = items.length;
 		for (var i = 0; i < cnt; i++) {
-			items[i].classList.add("mark");
+			items[i].classList.add(this.markClass);
 		}
 	};
 	
+	///Removes all marks
+	/** Useful to remove any highlight in the View
+	 */
 	View.prototype.unmark = function() {
-		var items = this.root.querySelector("mark");
+		var items = this.root.querySelector("."+this.markClass);
 		var cnt = items.length;
 		for (var i = 0; i < cnt; i++) {
-			items[i].classList.remove("mark");
+			items[i].classList.remove(this.markClass);
 		}
 	};
 	
-	View.prototype.installKbdHandler = function() {
+	///Installs keyboard handler for keys ESC and ENTER
+	/**
+	 * This function is called by setDefaultAction or setCancelAction, do not call directly
+	 */
+	View.prototype._installKbdHandler = function() {
 		if (this.kbdHandler) return;
 		this.kbdHandler = function(ev) {
 			var x = ev.which || ev.keyCode;
@@ -138,16 +202,38 @@ var TemplateJS = function(){
 		this.root.addEventListener("keydown", this.kbdHandler);
 	};
 	
+	///Sets function for default action
+	/** Default action is action called when user presses ENTER. 
+	 *
+	 * @param fn a function called on default action. The function receives reference to
+	 * the view as first argument. The function must return true to preven propagation
+	 * of the event
+	 * 
+	 * The most common default action is to validate and sumbit entered data
+	 */
 	View.prototype.setDefaultAction = function(fn) {
 		this.defaultAction = fn;
-		this.installKbdHandler();
+		this._installKbdHandler();
 	};
+
+	///Sets function for cancel action
+	/** Cancel action is action called when user presses ESC. 
+	 *
+	 * @param fn a function called on cancel action. The function receives reference to
+	 * the view as first argument. The function must return true to preven propagation
+	 * of the event
+	 * 
+	 * The most common cancel action is to reset form or to exit current activity without 
+	 * saving the data
+	 */
 	View.prototype.setCancelAction = function(fn) {
 		this.cancelAction = fn;
-		this.installKbdHandler();
+		this._installKbdHandler();
 	};
 	
-	View.prototype.installFocusHandler = function(fn) {
+	///Installs focus handler
+	/** Function is called from setFirstTabElement, do not call directly */
+	View.prototype._installFocusHandler = function(fn) {
 		if (this.focusHandler) return;
 		this.focusHandler = function(ev) {
 			if (this.firstTabElement) {
@@ -164,41 +250,76 @@ var TemplateJS = function(){
 		this.root.addEventListener("focusout", this.focusHandler);
 	};
 	
+	///Sets first TAB element and installs focus handler
+	/**
+	 * @param el the first TAB element in the form, it also receives a focus. You should
+	 * specify really first TAB, even if you need to move focus elsewhere. Just move the
+	 * focus after setting the first TAB element.
+	 * 
+	 * The focus handler ensures that focus will not leave the current View by pressing TAB.
+	 * key. Function provides of cycling of the focus on the View. The first TAB element 
+	 * is need to have a home position defined.
+	 */
 	View.prototype.setFirstTabElement = function(el) {
 		this.firstTabElement = el;
 		this.firstTabElement.focus();
-		this.installFocusHandler();
+		this._installFocusHandler();
 	}
 	
+	///Set contents of the view with animation
+	/**
+	 * @note The animation is achieved through CSS. The function doesn't animate anything,
+	 * it only helps with timing
+	 * 
+	 * @param el element to set as new content. If there is other active element, it will be 
+	 * replaced with animation
+	 * @param animParams paramaters of animation, the object described below
+	 * 
+	 * animParams contains
+	 * 
+	 *  - duraction = specifies animation duration in milliseconds. Duration of enter animation
+	 *  must me equal to duration of exit animation
+	 *  - enterClass = class which contains enter animation
+	 *  - exitClass = class which contains exit animation
+	 *  - parallel = if set to true, enter and exit animation are played at same time. 
+	 *                Default value is false, so first exit animation, then enter animation
+	 *  - 
+	 *  
+	 *  @retun function returns promise which is resolved after content is replaced
+	 *  
+	 *  @note The content itself is considered as replaced instantly, so function
+	 *  setData will work with the new content
+	 *  
+	 *   //TODO test
+	 */
 	View.prototype.setContentWithAnim = function(el, animParams) {
 		
-		var durations = animParams.duration;
+		var duration = animParams.duration;
 		var enterClass = animParams.enterClass;
-		var exitClass = animParam.exitClass;
+		var exitClass = animParams.exitClass;
+		var parallel = animParams.parallel;
+		
 		var root = this.root;
 	
 		function leave() {
-			var cur = this.root.firstChild
+			var cur = root.firstChild
 			if (cur) {
-				cur.classList.replace(enterClass,exitClass);
-				cur.classList.add(enterClass);
+				cur.classList.remove(enterClass);
+				cur.classList.add(exitClass);
 				return new Promise(function(ok){
 					setTimeout(function(){
 						root.removeChild(cur);
 						ok();
-					}.bind(this),duration);
-				}.bind(this));
+					},duration);
+				});
 			} else {
-				return new Promise(function(ok){ok();});
+				return new Promise.resolve();
 			}
 		}
 		
 		function enter() {
 			el.classList.add(enterClass);
 			root.appendChild(el);			
-			return new Promise(function(ok){
-				setTimeout(ok,duration);
-			});
 		}
 		
 		if (this.nextPhase) {
@@ -206,15 +327,26 @@ var TemplateJS = function(){
 		} else {
 			this.nextPhase = leave();	
 		}
-		this.nextPhase.then = this.nextPhase.then(enter);
-		this.rebuildDataMap(el);
+
+		this.rebuildMap(el);
+
+		if (parallel) {
+			this.nextPhase = Promise.all([this.nextPhase, enter()]);
+		} else {
+			this.nextPhase = this.nextPhase.then(enter);
+		}
+		return this.nextPhase;
 	}
 
-	View.prototype.loadTemplateWithAnim = function(el, animParams) {
-		this.setContentWithAnim(loadTemplate(el), animParams);
+	///Loads template with animation
+	/**
+	 * @param t template ID
+	 * @param animParams parameters of animation, see setContentWithAnim
+	 */
+	View.prototype.loadTemplateWithAnim = function(t, animParams) {
+		return this.setContentWithAnim(loadTemplate(t), animParams);
 	}
 
-	
 	function Subgroup(elem, topelem) {
 		this.elem = elem;		
 		this.topelem = topelem;
@@ -296,7 +428,16 @@ var TemplateJS = function(){
 		
 	}
 
-	View.prototype.rebuildDataMap = function(rootel) {
+	///Rebuilds map of elements
+	/**
+	 * This function is called in various situations especialy, after content of the
+	 * View has been changed. The function must be called manually to register
+	 * any new field added by function outside of the View.
+	 * 
+	 * After the map is builtm, you can access the elements through the variable byName["name"],
+	 * Please do not modify the map manually
+	 */
+	View.prototype.rebuildMap = function(rootel) {
 		if (!rootel) rootel = this.root;
 		this.byName = {};
 		var groups = [];
@@ -327,11 +468,13 @@ var TemplateJS = function(){
 	
 	///Sets data in the view
 	/**
-	 * @data structured data. Promise can be used as value, the value is rendered when the promise
+	 * @param structured data. Promise can be used as value, the value is rendered when the promise
 	 *  is resolved
 	 *  
-	 * @return function returns promise, which resolves after all promises are resolved. If there
-	 * were no promise, function returns resolved promise
+	 * @return function returns array results generated during the process. It is
+	 * purposed to return array of promises if any action require to perform operation using
+	 * Promise. If there is no such operation, result is empty array. You can use Promise.all() 
+	 * on result.
 	 */
 	View.prototype.setData = function(data) {
 		var me = this;
@@ -345,7 +488,7 @@ var TemplateJS = function(){
 							
 							if (val)
 							
-							me.updateElementAttributes(elem,val);
+							updateElementAttributes(elem,val);
 							if (!("value" in val)) {
 								return;
 							}else {
@@ -384,7 +527,7 @@ var TemplateJS = function(){
 		return results;
 	}
 	
-	View.prototype.updateElementAttributes = function(elem,val) {
+	function updateElementAttributes (elem,val) {
 		for (var itm in val) {
 			if (itm == "value") continue;
 			if (itm == "classList" && typeof val[itm] == "object") {
@@ -462,11 +605,6 @@ var TemplateJS = function(){
 		}
 	}
 	
-	View.prototype.updateTextArea = function(elem, val) {
-		elem.value = val.toString();
-	}
-
-	
 	function updateBasicElement (elem, val) {
 		if (typeof val == "object") {
 			if (val instanceof Element) {
@@ -492,7 +630,15 @@ var TemplateJS = function(){
 		View.clearContent(elem);			
 		elem.appendChild(document.createTextNode(val));
 	}
-	
+
+	///Reads data from the elements
+	/**
+	 * For each named element, the field is created in result Object. If there
+	 * are multiple values for the name, they are put to the array.
+	 * 
+	 * Because many named elements are purposed to only display values and not enter
+	 * values, you can mark such elements as data-readonly="1"
+	 */
 	View.prototype.readData = function(keys) {
 		if (typeof keys == "undefined") {
 			keys = Object.keys(this.byName);
@@ -544,21 +690,7 @@ var TemplateJS = function(){
 	function readSelectElement(elem) {
 		return elem.value;	
 	}
-	View.prototype.readTemplateElement = function(elem) {
-		var res = [];
-		var prev = elem.previousSibling;
 		
-		if (prev && prev.dataset.container) {
-			var x = prev.firstChild;
-			while (x!=null) {
-				var w = new View(x);
-				res.push(w.readData());
-				x = x.nextSibling;
-			}
-		} 
-		return res;
-	}
-	
 	function readBasicElement(elem) {
 		var group = elem.template_js_group;
 		if (group) {
@@ -573,13 +705,25 @@ var TemplateJS = function(){
 		}
 	}
 	
+	///Registers custrom element
+	/**
+	 * @param tagName name of the tag
+	 * @param customElementObject new CustomElementEvents(setFunction(),getFunction())
+	 */
 	View.regCustomElement = function(tagName, customElementObject) {
 		var upper = tagName.toUpperCase();
 		View.customElements[upper] = customElementObject;
 	}
 
-	View.createPageRoot = function() {
-		return new View(document.body.appendChild(document.createElement("page-root")));
+	///Creates root View in current page
+	/**
+	 * @param visibility of the view. Because the default value is View.HIDDEN, if called
+	 * without arguments the view will be hidden and must be shown by the function show()
+	 */
+	View.createPageRoot = function(visibility /* = View.HIDDEN */) {		
+		var view = new View(document.body.appendChild(document.createElement("page-root")));
+		view.setVisibility(visibility);
+		return view;
 	}
 	
 	function CustomElementEvents(setval,getval) {
