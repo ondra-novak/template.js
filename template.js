@@ -55,6 +55,13 @@ var TemplateJS = function(){
 		
 	};
 	
+	function Group(element, parent, before) {
+		this.element = element;
+		this.parent = parent;
+		this.before = before;
+	}
+	
+	
 	
 	View.prototype.getRoot = function() {
 		return this.root;
@@ -85,7 +92,7 @@ var TemplateJS = function(){
 	
 	View.prototype.clearContent = function() {
 		View.clearContent(this.root);
-		this.byName = [];
+		this.byName = {};
 	};
 	
 	///Creates view at element specified by its name
@@ -207,21 +214,113 @@ var TemplateJS = function(){
 		this.setContentWithAnim(loadTemplate(el), animParams);
 	}
 
+	
+	function Subgroup(elem, topelem) {
+		this.elem = elem;		
+		this.topelem = topelem;
+	}
+	
+	Subgroup.prototype.contains = function(el) {
+		while (el.parentNode) {
+			if (el.parentNode == this.elem) return true;
+			if (el.parentNode == this.topelem) return false;
+			el = el.parentNode;
+		}
+		return false;
+	}
+
+	
+	function GroupManager(template_el) {
+		this.baseEl = template_el;
+		this.parent = template_el.parentNode;
+		this.idmap={};
+		this.trnids=[];
+		this.baseEl.hidden=true;
+		this.result = [];
+	}
+	
+	GroupManager.prototype.begin = function() {
+		this.trnids=[];
+		this.result = [];
+	}
+	
+	GroupManager.prototype.setValue = function(id, data) {
+		var x = this.idmap[id];
+		if (!x) {
+			var newel = this.baseEl.cloneNode(true);
+			var newview = new View(newel);
+			x = this.idmap[id] = newview;
+			this.parent.insertBefore(newel, this.baseEl);
+			newel.hidden = false;
+			newel.removeAttribute("data-name");
+			newel.removeAttribute("name");
+		} else {
+			this.parent.removeChild(x.getRoot());
+			this.parent.insertBefore(x.getRoot(), this.baseEl);
+		}
+		this.trnids.push(id);
+		var res =  x.setData(data);
+		res = this.result.concat(res);		
+	}
+	
+	GroupManager.prototype.finish = function() {
+		var newidmap = {};
+		this.trnids.forEach(function(x){			
+			if (this.idmap[x]) {
+				newidmap[x] = this.idmap[x];
+				delete this.idmap[x];
+			}			
+		},this);
+		for (var x in this.idmap) {
+			try {
+				this.parent.removeChild(this.idmap[x].getRoot());			
+			} catch (e) {
+				
+			}
+		}
+		this.idmap = newidmap;
+		this.trnids = [];
+		return this.result;
+		
+	}
+	
+	GroupManager.prototype.readData = function() {
+	
+		var out = [];		
+		for (var x in this.idmap) {
+			var d = this.idmap[x].readData();
+			d._id = x;
+			out.push(d);			
+		}
+		return out;
+		
+	}
+
 	View.prototype.rebuildDataMap = function(rootel) {
 		if (!rootel) rootel = this.root;
 		this.byName = {};
+		var groups = [];
 		var placeholders = [rootel.querySelectorAll("[data-name]"),rootel.querySelectorAll("[name]")]
 		for (var x = 0; x < 2; x++) {
 			var pl = placeholders[x];
-			var i;
+			var i;			
 			var cnt = pl.length;
 			for (i = 0; i < cnt; i++) {
-				var name = pl[i].name || pl[i].dataset.name;
-				var lname = name.split(",");
-				lname.forEach(function(x) {
-					if (!(x in this.byName)) this.byName[x] = [];
-					this.byName[x].push(pl[i]);
-				}.bind(this));
+				var plx = pl[i];
+				if (typeof groups.find(function(x) {return x.contains(plx);}) == "undefined") {
+					var name = plx.name || plx.dataset.name;
+					var lname = name.split(",");
+					lname.forEach(function(vname) {								
+						if (vname.endsWith("[]")) {
+							groups.push(new Subgroup(plx,rootel));
+							vname = vname.substr(0,vname.length-2);
+							if (plx.template_js_group === undefined)
+								plx.template_js_group = new GroupManager(plx);
+						} 						
+						if (!(vname in this.byName)) this.byName[vname] = [];
+						this.byName[vname].push(plx);
+					},this);
+				}
 			}
 		}
 	}
@@ -236,10 +335,11 @@ var TemplateJS = function(){
 	 */
 	View.prototype.setData = function(data) {
 		var me = this;
-		var finished = [];
+		var results = [];
 		
 		function processItem(itm, elemArr, val) {
 				elemArr.forEach(function(elem) {
+					var res /* = undefined*/;
 					if (elem) {
 						if (typeof val == "object" && !Array.isArray(val)) {
 							
@@ -253,25 +353,17 @@ var TemplateJS = function(){
 							} 
 						}
 						var eltype = elem.tagName;
-						if (elem.dataset.forceTag) eltype = elem.dataset.forceTag;			
+						if (elem.dataset.type) eltype = elem.dataset.type;			
 						if (val) {
 							var eltypeuper = eltype.toUpperCase();
 							if (View.customElements[eltypeuper]) {
-								View.customElements[eltypeuper].setValue(elem,val);
+								res = View.customElements[eltypeuper].setValue(elem,val);
 							} else {
-								switch (eltype.toUpperCase()) {
-									case "INPUT": me.updateInputElement(elem, val);break;
-									case "SELECT": me.updateSelectElement(elem, val);break;
-									case "TEXTAREA": me.updateInputElement(elem, val);break;
-									case "TEMPLATE": me.updateTemplateElement(elem, val, finished);break;
-									case "IMG": elem.setAttribute("src",val);break; 
-									case "A": elem.setAttribute("href",val);break; 
-									case "IFRAME": elem.setAttribute("src",val);break; 
-									default: me.updateBasicElement(elem, val);break;
-								}
+								res = updateBasicElement(elem, val);								
 							}
 						}
 					}
+					return res;
 				});
 			}
 			
@@ -282,13 +374,14 @@ var TemplateJS = function(){
 			if (elemArr) {
 				var val = data[itm];
 				if (typeof val == "object" && (val instanceof Promise)) {
-					finished.push(val.then(processItem.bind(this,itm,elemArr)));
+					results.push(val.then(processItem.bind(this,itm,elemArr)));
 				} else {
-					processItem(itm,elemArr,val);
+					var r = processItem(itm,elemArr,val);
+					if (typeof r != "undefined") results.push(r);
 				}
 			}
 		}
-		return Promise.all(finished);
+		return results;
 	}
 	
 	View.prototype.updateElementAttributes = function(elem,val) {
@@ -327,7 +420,7 @@ var TemplateJS = function(){
 		}
 	}
 	
-	View.prototype.updateInputElement = function(elem, val) {
+	function updateInputElement(elem, val) {
 		var type = elem.getAttribute("type");
 		if (type == "checkbox" || type == "radio") {
 			if (typeof (val) == "boolean") {
@@ -343,7 +436,7 @@ var TemplateJS = function(){
 	}
 	
 	
-	View.prototype.updateSelectElement = function(elem, val) {
+	function updateSelectElement(elem, val) {
 		if (typeof val == "object") {
 			var curVal = elem.value;
 			View.clearContent(elem);
@@ -372,33 +465,32 @@ var TemplateJS = function(){
 	View.prototype.updateTextArea = function(elem, val) {
 		elem.value = val.toString();
 	}
+
 	
-	View.prototype.updateBasicElement = function(elem, val) {
-		View.clearContent(elem);
-		if (typeof val == "object" && val instanceof Element) {
-			elem.appendChild(val);
-		} else {
-			elem.appendChild(document.createTextNode(val));
-		}
-	}
-	View.prototype.updateTemplateElement = function(elem, val) {
-		
-		var prev = elem.previousSibling;
-		
-		while (prev &&  prev.dataset && prev.dataset.containerItem) {
-			prev.parentElement.removeChild(prev);
-			prev = elem.previousSibling;
-		}
-		var cnt = val.length;
-		for (var i = 0; i < cnt; i++) {
-			
-			var k = loadTemplate(elem);
-			var v = new View(k);
-			v.setData(val[i]);
-			k.setAttribute("data-container-item","1");
-			elem.parentElement.insertBefore(k, elem);
-		}
-		
+	function updateBasicElement (elem, val) {
+		if (typeof val == "object") {
+			if (val instanceof Element) {
+				View.clearContent(elem);
+				elem.appendChild(val);
+				return;
+			} else {
+				var group = elem.template_js_group;
+				if (group) {
+					group.begin();
+					if (Array.isArray(val) ) {
+						var i = 0;
+						var cnt = val.length;
+						for (i = 0; i < cnt; i++) {
+							var id = val[i]._id || i;
+							group.setValue(id, val[i]);
+						}
+						return group.finish();
+					}
+				}
+			}
+		} 
+		View.clearContent(elem);			
+		elem.appendChild(document.createTextNode(val));
 	}
 	
 	View.prototype.readData = function(keys) {
@@ -410,21 +502,15 @@ var TemplateJS = function(){
 		keys.forEach(function(itm) {
 			var elemArr = me.byName[itm];
 			elemArr.forEach(function(elem){			
-				if (elem) {
+				if (elem && !elem.dataset.readonly) {
 					var val;
 					var eltype = elem.tagName;
-					if (elem.dataset.forceTag) eltype = elem.dataset.forceTag;
+					if (elem.dataset.type) eltype = elem.dataset.type;
 					var eltypeuper = eltype.toUpperCase();
 					if (View.customElements[eltypeuper]) {
 						val = View.customElements[eltypeuper].getValue(elem, res[itm]);
 					} else {
-						switch (eltypeuper) {
-							case "INPUT": val = me.readInputElement(elem,res[itm]);break;
-							case "SELECT": val = me.readSelectElement(elem,res[itm]);break;
-							case "TEXTAREA": val = me.readTextAreaElement(elem,res[itm]);break;
-							case "TEMPLATE": val = me.readTemplateElement(elem,res[itm]);break;
-							default: val = me.readBasicElement(elem,res[itm]);break;
-						}
+						val = readBasicElement(elem,res[itm]);					
 					}
 					if (typeof val != "undefined") {
 						res[itm] = val;
@@ -435,7 +521,7 @@ var TemplateJS = function(){
 		return res;
 	}
 	
-	View.prototype.readInputElement = function(elem, curVal) {
+	function readInputElement(elem, curVal) {
 		var type = elem.getAttribute("type");
 		if (type == "checkbox" || type == "radio") {
 			if (typeof curVal == "undefined") {
@@ -455,10 +541,7 @@ var TemplateJS = function(){
 			return elem.value;
 		}
 	}
-	View.prototype.readSelectElement = function(elem) {
-		return elem.value;	
-	}
-	View.prototype.readTextAreaElement = function(elem) {
+	function readSelectElement(elem) {
 		return elem.value;	
 	}
 	View.prototype.readTemplateElement = function(elem) {
@@ -476,26 +559,66 @@ var TemplateJS = function(){
 		return res;
 	}
 	
-	View.prototype.readBasicElement = function(elem) {
-		return elem.innerHTML;		
+	function readBasicElement(elem) {
+		var group = elem.template_js_group;
+		if (group) {
+			return group.readData();			
+		} else {
+			if (elem.contentEditable == "true" ) {
+				if (elem.dataset.format == "html")
+					return elem.innerHTML;
+				else 
+					return elem.innerText;
+			}
+		}
 	}
 	
-	View.customElements = {};
 	View.regCustomElement = function(tagName, customElementObject) {
 		var upper = tagName.toUpperCase();
 		View.customElements[upper] = customElementObject;
 	}
 
-	function CustomElementEvents() {
-		
+	View.createPageRoot = function() {
+		return new View(document.body.appendChild(document.createElement("page-root")));
 	}
 	
-	CustomElementEvents.prototype.setValue = function(elm,value) {
-		//empty, implement own version
+	function CustomElementEvents(setval,getval) {
+		this.setValue = setval;
+		this.getValue = getval;
+		
 	}
-	CustomElementEvents.prototype.getValue = function(elm, curval) {
-		//empty, implement own version
-	}
+
+	View.customElements = {
+			"INPUT":{
+				"setValue":updateInputElement,
+				"getValue":readInputElement,
+			},
+			"TEXTAREA":{
+				"setValue":updateInputElement,
+				"getValue":readInputElement,
+			},
+			"SELECT":{
+				"setValue":updateSelectElement,
+				"getValue":readSelectElement,
+			},
+			"IMG":{
+				"setValue":function(elem,val) {
+					elem.setAttribute("src",val);
+				},
+				"getValue":function(elem) {
+					elem.getAttribute("src");
+				}
+			},
+			"IFRAME":{
+				"setValue":function(elem,val) {
+					elem.setAttribute("src",val);
+				},
+				"getValue":function(elem) {
+					elem.getAttribute("src");
+				}
+			}
+	};
+
 	
 	
 	return {
