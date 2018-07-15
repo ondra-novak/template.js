@@ -1,0 +1,28 @@
+.templ_ppltable table {
+	width: 100%;
+} 
+
+.dlgbutt,.dlgbutt_left {
+	display:block;
+	width:5rem;
+	float:right;
+	margin-left: 0.5rem;
+	
+}
+
+.dlgbutt_left {
+	float:left;
+	} 
+
+dlg-box {
+	display:block;
+	width: 20rem;
+	position:fixed;
+	left: 50vw;
+	margin-left: -10rem;
+	border: 1px solid;
+	background-color: white;
+	top: 20vh;
+	box-shadow: 3px 3px 20px #00000080;
+	padding:1rem;
+}

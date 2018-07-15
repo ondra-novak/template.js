@@ -1,16 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
+<link href="test_page.css" rel="stylesheet" type="text/css" />
 <meta charset="utf-8" />
 <title>Template.js test page</title>
 </head>
-<body>
-<script type="text/javascript" src="template.js"></script>
+<body onload="start();">
+<script type="text/javascript" src="../template.js"></script>
+<script type="text/javascript" src="test_page.js"></script>
 
 <template id="ppltable">
 <table>
-<tr><th>First Name</th><th>Last Name</th><th>Year of birth</th><th>Sex</th><th>Properties</th></tr>
+<tr><th><input type="checkbox" name="deleteall" value="true"></th><th>First Name</th><th>Last Name</th><th>Year of birth</th><th>Sex</th><th>Properties</th></tr>
 <tr data-name="rows[]" >
+	<td><input type="checkbox" name="delete" value="true"></td>
 	<td data-name="first_name"></td>
 	<td data-name="last_name"></td>
 	<td data-name="birth"></td>
@@ -19,8 +22,10 @@
 	<td><button data-name="editbutt">Edit</button></td>
 </tr>
 </table>
+<button data-name="addbut" class="dlgbutt">Add</button>
+<button data-name="delbutt" class="dlgbutt_left">Erase</button>
 </template>
-<template id="fillform">
+<template id="fillform" data-tag="dlg-box">
 <table>
 <tr><td>First name</td><td><input type="text" name="first_name" /></td></tr>
 <tr><td>Last name</td><td><input type="text" name="last_name" /></td></tr>
@@ -32,6 +37,9 @@
 		<input type="checkbox" name="properties" value="hair"/> Have hair<br />
 		<input type="checkbox" name="properties" value="mustache"/> Have mustache</td></tr>
 <tr><td>notes</td><td contenteditable="true" data-name="notes" data-format="text"></td></tr>
+<tr><td></td><td>
+<button data-name="cancelbutt" class="dlgbutt">Cancel</button>
+<button data-name="okbutt" class="dlgbutt">Ok</button></td>
 </table>
 </template>
 <template id="mainpage">

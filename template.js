@@ -113,8 +113,36 @@ var TemplateJS = function(){
 	View.prototype.hide = function() {
 		this.setVisibility(View.HIDDEN);
 	}
+	
+	///Closes the view by unmapping it from the doom
+	/** The view can be remapped through the setConent or open() */
+	View.prototype.close = function() {		
+		this.root.parentElement.removeChild(this.root);
+		if (this.modal_elem) this.modal_elem.parentElement.removeChild(this.modal_elem);
+	}
 
+	///Opens the view as toplevel window
+	/** @note visual of toplevel window must be achieved through styles. 
+	 * This function just only adds the view to root of page
+	 */
+	View.prototype.open = function() {
+		document.body.appendChild(this.root);
+	}
 
+	///Opens the view as modal window
+	/**
+	 * Append lightbox which prevents
+	 */
+	View.prototype.openModal = function() {
+		if (this.modal_elem) return;
+		var lb = this.modal_elem = document.createElement("light-box");
+		if (View.lightbox_class) lb.classList.add(View.lightbox_class);
+		else lb.setAttribute("style", "display:block;position:fixed;left:0;top:0;width:100vw;height:100vh;"+View.lightbox_style);
+		document.body.appendChild(lb);
+		this.open();
+	//	this.setFirstTabElement()
+	}
+	
 	View.clearContent = function(element) {
 		var event = new Event("remove");
 		var x =  element.firstChild
@@ -208,12 +236,19 @@ var TemplateJS = function(){
 	 * @param fn a function called on default action. The function receives reference to
 	 * the view as first argument. The function must return true to preven propagation
 	 * of the event
+	 * @param el_name optional, if set, corresponding element receives click event for default action
+	 *                  (button OK in dialog)
 	 * 
 	 * The most common default action is to validate and sumbit entered data
 	 */
-	View.prototype.setDefaultAction = function(fn) {
+	View.prototype.setDefaultAction = function(fn, el_name) {
 		this.defaultAction = fn;
 		this._installKbdHandler();
+		if (el_name) {
+			var data = {};
+			data[el_name] = {"!click":fn};
+			this.setData(data)
+		}
 	};
 
 	///Sets function for cancel action
@@ -222,32 +257,75 @@ var TemplateJS = function(){
 	 * @param fn a function called on cancel action. The function receives reference to
 	 * the view as first argument. The function must return true to preven propagation
 	 * of the event
+
+	 * @param el_name optional, if set, corresponding element receives click event for default action
+	 *                  (button CANCEL in dialog)
 	 * 
 	 * The most common cancel action is to reset form or to exit current activity without 
 	 * saving the data
 	 */
-	View.prototype.setCancelAction = function(fn) {
+	View.prototype.setCancelAction = function(fn, el_name) {
 		this.cancelAction = fn;
 		this._installKbdHandler();
+		if (el_name) {
+			var data = {};
+			data[el_name] = {"!click":fn};
+			this.setData(data)
+		}
 	};
+	
+	function walkDOM(el, fn) {
+		var c = el.firstChild;
+		while (c) {
+			fn(c);
+			walkDOM(c,fn);
+			c = c.nextSibling;
+		}
+	}
 	
 	///Installs focus handler
 	/** Function is called from setFirstTabElement, do not call directly */
 	View.prototype._installFocusHandler = function(fn) {
 		if (this.focusHandler) return;
-		this.focusHandler = function(ev) {
-			if (this.firstTabElement) {
-				setTimeout(function() {
-					var c = document.activeElement;
-					while (c) {
-						if (c == this.root) return;
-						c = c.parentElement;
+		this.focusHandler = function(where, ev) {
+			setTimeout(function() {
+				where.focus();
+			},10);	
+		};
+		
+		var highestTabIndex=null;
+		var lowestTabIndex=null;
+		var firstElement=null;
+		var lastElement = null;
+		walkDOM(this.root,function(x){
+			if (typeof x.tabIndex == "number" && x.tabIndex != -1) {
+				if (highestTabIndex===null) {
+					highestTabIndex = lowestTabIndex = x.tabIndex;
+					firstElement = x;
+				} else {
+					if (x.tabIndex >highestTabIndex) highestTabIndex = x.tabIndex;
+					else if (x.tabIndex <lowestTabIndex) {
+						lowestTabIndex= x.tabIndex;
+						firstElement  = x;
 					}
-					this.firstTabElement.focus();
-				}.bind(this),1);
+				}
+				if (x.tabIndex == highestTabIndex) lastElement = x;
 			}
-		}.bind(this);
-		this.root.addEventListener("focusout", this.focusHandler);
+		});
+		
+		if (firstElement && lastElement) {
+			var le = document.createElement("focus-end");
+			le.setAttribute("tabindex",highestTabIndex);
+			le.style.display="block";
+			this.root.appendChild(le);
+			le.addEventListener("focus", this.focusHandler.bind(this,firstElement));
+	
+			var fe = document.createElement("focus-begin");
+			fe.setAttribute("tabindex",highestTabIndex);
+			fe.style.display="block";
+			this.root.insertBefore(fe,this.root.firstChild);
+			fe.addEventListener("focus", this.focusHandler.bind(this,lastElement));
+		}				
 	};
 	
 	///Sets first TAB element and installs focus handler
@@ -261,8 +339,12 @@ var TemplateJS = function(){
 	 * is need to have a home position defined.
 	 */
 	View.prototype.setFirstTabElement = function(el) {
-		this.firstTabElement = el;
-		this.firstTabElement.focus();
+		if (typeof el == "string") {
+			var f = this.byName[el];
+			if (f) return this.setFirstTabElement(f[0]);
+			else throw new Error("Item was not found: "+el);
+		}
+		el.focus();
 		this._installFocusHandler();
 	}
 	
@@ -484,20 +566,29 @@ var TemplateJS = function(){
 				elemArr.forEach(function(elem) {
 					var res /* = undefined*/;
 					if (elem) {
-						if (typeof val == "object" && !Array.isArray(val)) {
-							
-							if (val)
-							
-							updateElementAttributes(elem,val);
-							if (!("value" in val)) {
+						if (typeof val == "object") {
+							if (val instanceof Element) {
+								View.clearContent(elem)
+								elem.appendChild(val);
+								me.rebuildMap();
 								return;
-							}else {
-								val = val.value;
-							} 
+							} else if (val instanceof View) {
+								View.clearContent(elem)
+								elem.appendChild(val.getRoot());
+								me.rebuildMap();
+								return;
+							} else if (!Array.isArray(val)) {
+								updateElementAttributes(elem,val);
+								if (!("value" in val)) {
+									return;
+								}else {
+									val = val.value;
+								}
+							}
 						}
 						var eltype = elem.tagName;
 						if (elem.dataset.type) eltype = elem.dataset.type;			
-						if (val) {
+						if (val !== undefined) {
 							var eltypeuper = eltype.toUpperCase();
 							if (View.customElements[eltypeuper]) {
 								res = View.customElements[eltypeuper].setValue(elem,val);
@@ -606,24 +697,18 @@ var TemplateJS = function(){
 	}
 	
 	function updateBasicElement (elem, val) {
-		if (typeof val == "object") {
-			if (val instanceof Element) {
-				View.clearContent(elem);
-				elem.appendChild(val);
-				return;
-			} else {
-				var group = elem.template_js_group;
-				if (group) {
-					group.begin();
-					if (Array.isArray(val) ) {
-						var i = 0;
-						var cnt = val.length;
-						for (i = 0; i < cnt; i++) {
-							var id = val[i]._id || i;
-							group.setValue(id, val[i]);
-						}
-						return group.finish();
+		if (Array.isArray(val)) {
+			var group = elem.template_js_group;
+			if (group) {
+				group.begin();
+				if (Array.isArray(val) ) {
+					var i = 0;
+					var cnt = val.length;
+					for (i = 0; i < cnt; i++) {
+						var id = val[i]._id || i;
+						group.setValue(id, val[i]);
 					}
+					return group.finish();
 				}
 			}
 		} 
@@ -720,10 +805,23 @@ var TemplateJS = function(){
 	 * @param visibility of the view. Because the default value is View.HIDDEN, if called
 	 * without arguments the view will be hidden and must be shown by the function show()
 	 */
-	View.createPageRoot = function(visibility /* = View.HIDDEN */) {		
-		var view = new View(document.body.appendChild(document.createElement("page-root")));
+	View.createPageRoot = function(visibility /* = View.HIDDEN */) {
+		var elem = document.createElement("toplevel-view");
+		document.body.appendChild(elem)
+		var view = new View(elem);
 		view.setVisibility(visibility);
 		return view;
+	}
+	
+	///Create empty view, which can be eventually opened or set as subview
+	View.create = function() {
+		var view = new View(document.createElement("toplevel-view"));
+		return view;		
+	}
+	
+	View.createFromTemplate = function(id, tempTag) {
+		var t = loadTemplate(id, tempTag)
+		return new View(t);
 	}
 	
 	function CustomElementEvents(setval,getval) {
@@ -763,6 +861,10 @@ var TemplateJS = function(){
 			}
 	};
 
+	///Lightbox style, mostly color and opacity
+	View.lightbox_style = "background-color:black;opacity:0.25";
+	///Lightbox class, if defined, style is ignored
+	View.lightbox_class = "";
 	
 	
 	return {
