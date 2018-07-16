@@ -1,7 +1,25 @@
+body {
+	font-family: sans-serif;
+	font-size: 0.5cm;
+	padding: 5rem;
+	
+}
+
 .templ_ppltable table {
 	width: 100%;
-} 
+	border-collapse: collapse;
+	border: 1px solid;
+}
+.templ_ppltable th{
+    border-collapse: collapse;
+    color:white;
+    background-color: #444;
+    border-right: 1px solid white;
+}  
 
+.templ_ppltable td{
+    border: 1px solid black;
+}
 .dlgbutt,.dlgbutt_left {
 	display:block;
 	width:5rem;
@@ -25,4 +43,8 @@ dlg-box {
 	top: 20vh;
 	box-shadow: 3px 3px 20px #00000080;
 	padding:1rem;
+}
+
+dlg-box input[type=text] {
+	width: 10rem;
 }
