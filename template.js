@@ -200,7 +200,7 @@ var TemplateJS = function(){
 	/** Useful to remove any highlight in the View
 	 */
 	View.prototype.unmark = function() {
-		var items = this.root.querySelector("."+this.markClass);
+		var items = this.root.querySelectorAll("."+this.markClass);
 		var cnt = items.length;
 		for (var i = 0; i < cnt; i++) {
 			items[i].classList.remove(this.markClass);
@@ -509,6 +509,28 @@ var TemplateJS = function(){
 		return out;
 		
 	}
+	
+	View.prototype.enableItem = function(name, enable) {
+		var d = {};
+		d[name] = {"disabled":enabled?null:""};
+		this.setData(d);
+	}
+	
+	View.prototype.showItem = function(name, showCmd) {
+		var d = {};
+		if (typeof showCmd == "boolean") {
+			this.showItem(name,showCmd?View.VISIBLE:View.HIDDEN);
+		}else {			
+			if (vis_state == View.VISIBLE) {
+				d[name] = {".hidden":false,".style.visibility":""};
+			} else if (vis_state == View.TRANSPARENT) {
+				d[name] = {".hidden":false,".style.visibility":"hidden"};
+			} else {
+				d[name] = {".hidden":true};
+			}
+		}
+		this.setData(d);
+	}
 
 	///Rebuilds map of elements
 	/**
@@ -531,7 +553,7 @@ var TemplateJS = function(){
 			for (i = 0; i < cnt; i++) {
 				var plx = pl[i];
 				if (typeof groups.find(function(x) {return x.contains(plx);}) == "undefined") {
-					var name = plx.name || plx.dataset.name;
+					var name = plx.name || plx.dataset.name || plx.getAttribute("name");
 					var lname = name.split(",");
 					lname.forEach(function(vname) {								
 						if (vname.endsWith("[]")) {
@@ -638,13 +660,27 @@ var TemplateJS = function(){
 				}
 				elem._t_eventHandlers[name] = fn;
 				elem.addEventListener(name, fn);
-			} else if (itm.substr(0,1) == ".") {
+			} else if (itm.substr(0,1) == ".") {				
 				var name = itm.substr(1);
+				var obj = elem;
+				var nextobj;
+				var idx;
+				var subkey;
+				while ((idx = name.indexOf(".")) != -1) {
+					subkey = name.substr(0,idx);
+					nextobj = obj[subkey];
+					if (nextobj == undefined) {
+						if (v !== undefined) nextobj = obj[subkey] = {};
+						else return;
+					}
+					name = name.substr(idx+1);
+					obj = nextobj;
+				}
 				var v = val[itm];
-				if (typeof v == "undefined") {
-					delete elem[name];
+				if ( v === undefined) {
+					delete obj[name];
 				} else {
-					elem[name] = v;
+					obj[name] = v;
 				}					
 			} else if (val[itm]===null) {
 				elem.removeAttribute(itm);
