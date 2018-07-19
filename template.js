@@ -51,6 +51,7 @@ var TemplateJS = function(){
 	function View(elem) {
 		if (typeof elem == "string") elem = document.getElementById(elem);
 		this.root = elem;
+		this.marked =[];
 		this.rebuildMap();		
 		
 	};
@@ -75,6 +76,8 @@ var TemplateJS = function(){
 		if (elem instanceof View) 
 			return this.setContent(elem.getRoot());		
 		this.clearContent();
+		this.defaultAction = null;
+		this.cancelAction = null;
 		this.root.appendChild(elem);
 		this.rebuildMap();
 	};
@@ -187,24 +190,27 @@ var TemplateJS = function(){
 	 * will mark all elements that contain anything relate to that error code. Marked
 	 * elements can be highlighted, or there can be hidden message which is exposed once
 	 * it is marked
+	 * 
 	 */
 	View.prototype.mark = function(selector) {
-		var items = this.root.querySelectorAll(selector);
+		var items = this.byName[selector];
 		var cnt = items.length;
 		for (var i = 0; i < cnt; i++) {
 			items[i].classList.add(this.markClass);
-		}
+			this.marked.push(items[i]);
+		}		
+		
 	};
 	
 	///Removes all marks
 	/** Useful to remove any highlight in the View
 	 */
 	View.prototype.unmark = function() {
-		var items = this.root.querySelectorAll("."+this.markClass);
-		var cnt = items.length;
+		var cnt = this.marked.length;
 		for (var i = 0; i < cnt; i++) {
-			items[i].classList.remove(this.markClass);
+			this.marked[i].classList.remove(this.markClass);
 		}
+		this.marked = [];
 	};
 	
 	///Installs keyboard handler for keys ESC and ENTER
@@ -286,8 +292,11 @@ var TemplateJS = function(){
 	///Installs focus handler
 	/** Function is called from setFirstTabElement, do not call directly */
 	View.prototype._installFocusHandler = function(fn) {
-		if (this.focusHandler) return;
-		this.focusHandler = function(where, ev) {
+		if (this.focus_top && this.focus_bottom) {
+			if (this.focus_top.isConnected && this.focus_bottom.isConnected)
+				return;
+		}
+		var focusHandler = function(where, ev) {
 			setTimeout(function() {
 				where.focus();
 			},10);	
@@ -318,14 +327,16 @@ var TemplateJS = function(){
 			le.setAttribute("tabindex",highestTabIndex);
 			le.style.display="block";
 			this.root.appendChild(le);
-			le.addEventListener("focus", this.focusHandler.bind(this,firstElement));
+			le.addEventListener("focus", focusHandler.bind(this,firstElement));
 	
 			var fe = document.createElement("focus-begin");
 			fe.setAttribute("tabindex",highestTabIndex);
 			fe.style.display="block";
 			this.root.insertBefore(fe,this.root.firstChild);
-			fe.addEventListener("focus", this.focusHandler.bind(this,lastElement));
+			fe.addEventListener("focus", focusHandler.bind(this,lastElement));
 		}				
+		this.focus_top = firstElement;
+		this.focus_bottom = lastElement;
 	};
 	
 	///Sets first TAB element and installs focus handler
@@ -510,26 +521,53 @@ var TemplateJS = function(){
 		
 	}
 	
+	///enables items
+	/**
+	 * @param name name of item
+	 * @param enable true/false whether item has to be enabled
+	 */
 	View.prototype.enableItem = function(name, enable) {
 		var d = {};
-		d[name] = {"disabled":enabled?null:""};
+		d[name] = {"disabled":enable?null:""};
 		this.setData(d);
 	}
-	
+
+	///show or hide item
+	/**
+	 * @param name name of item
+	 * @param showCmd true/false to show or hide item, or you can use constants View.VISIBLE,View.HIDDEN and View.TRANSPARENT
+	 */
 	View.prototype.showItem = function(name, showCmd) {
 		var d = {};
 		if (typeof showCmd == "boolean") {
 			this.showItem(name,showCmd?View.VISIBLE:View.HIDDEN);
 		}else {			
-			if (vis_state == View.VISIBLE) {
+			if (showCmd == View.VISIBLE) {
 				d[name] = {".hidden":false,".style.visibility":""};
-			} else if (vis_state == View.TRANSPARENT) {
+			} else if (showCmd == View.TRANSPARENT) {
 				d[name] = {".hidden":false,".style.visibility":"hidden"};
 			} else {
 				d[name] = {".hidden":true};
 			}
 		}
 		this.setData(d);
+	}
+
+	///sets an event procedure to the item
+	/**
+	 * @param name name of item
+	 * @param event name of event procedure
+	 * @param fn function. To remove event procedure, specify null
+	 * 
+	 * @note it is faster to set the event procedure through setData along with other items
+	 */
+	View.prototype.setItemEvent = function(name, event, fn) {
+		var d = {}
+		var evdef = {};
+		evdef["!"+event] = fn;
+		d[name] = evdef;
+		this.setData(d);
+		
 	}
 
 	///Rebuilds map of elements
