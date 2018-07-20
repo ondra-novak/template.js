@@ -570,6 +570,22 @@ var TemplateJS = function(){
 		
 	}
 
+	View.prototype.setItemValue = function(name, value) {
+		var d = {};
+		d[name] = {value:value}
+		this.setData(d);
+	}
+
+	View.prototype.loadItemTemplate = function(name, template_name) {
+		var v = View.createFromTemplate(template_name);
+		this.setItemValue(name, v);
+		return v;
+	}
+	
+	View.prototype.clearItem = function(name) {
+		this.setItemValue(name, null);
+	}
+
 	///Rebuilds map of elements
 	/**
 	 * This function is called in various situations especialy, after content of the
@@ -622,27 +638,34 @@ var TemplateJS = function(){
 		var me = this;
 		var results = [];
 		
+		function checkSpecialValue(val, elem) {
+			if (val instanceof Element) {
+				View.clearContent(elem)
+				elem.appendChild(val);
+				me.rebuildMap();
+				return true;
+			} else if (val instanceof View) {
+				View.clearContent(elem)
+				elem.appendChild(val.getRoot());
+				me.rebuildMap();
+				return true;
+			}			
+		}
+		
 		function processItem(itm, elemArr, val) {
 				elemArr.forEach(function(elem) {
 					var res /* = undefined*/;
 					if (elem) {
 						if (typeof val == "object") {
-							if (val instanceof Element) {
-								View.clearContent(elem)
-								elem.appendChild(val);
-								me.rebuildMap();
-								return;
-							} else if (val instanceof View) {
-								View.clearContent(elem)
-								elem.appendChild(val.getRoot());
-								me.rebuildMap();
-								return;
+							if (checkSpecialValue(val,elem)) {
+								return							
 							} else if (!Array.isArray(val)) {
 								updateElementAttributes(elem,val);
 								if (!("value" in val)) {
 									return;
 								}else {
 									val = val.value;
+									if (typeof val == "object" && checkSpecialValue(val,elem)) return;
 								}
 							}
 						}
@@ -786,8 +809,10 @@ var TemplateJS = function(){
 				}
 			}
 		} 
-		View.clearContent(elem);			
-		elem.appendChild(document.createTextNode(val));
+		View.clearContent(elem);
+		if (val !== null && val !== undefined) {
+			elem.appendChild(document.createTextNode(val));
+		}
 	}
 
 	///Reads data from the elements
