@@ -52,6 +52,7 @@ var TemplateJS = function(){
 		if (typeof elem == "string") elem = document.getElementById(elem);
 		this.root = elem;
 		this.marked =[];
+		this.groups =[];
 		this.rebuildMap();		
 		
 	};
@@ -455,13 +456,23 @@ var TemplateJS = function(){
 	}
 
 	
-	function GroupManager(template_el) {
+	function GroupManager(template_el,name) {
 		this.baseEl = template_el;
 		this.parent = template_el.parentNode;
+		this.anchor = document.createComment("><");
 		this.idmap={};
 		this.trnids=[];
-		this.baseEl.hidden=true;
-		this.result = [];
+		this.result = [];		
+		this.parent.insertBefore(this.anchor, this.baseEl);
+		this.parent.removeChild(this.baseEl);
+		this.name = name;
+		template_el.removeAttribute("data-name");
+		template_el.removeAttribute("name");
+
+	}
+	
+	GroupManager.prototype.isConnectedTo = function(elem) {
+		return elem.contains(this.anchor);
 	}
 	
 	GroupManager.prototype.begin = function() {
@@ -475,13 +486,10 @@ var TemplateJS = function(){
 			var newel = this.baseEl.cloneNode(true);
 			var newview = new View(newel);
 			x = this.idmap[id] = newview;
-			this.parent.insertBefore(newel, this.baseEl);
-			newel.hidden = false;
-			newel.removeAttribute("data-name");
-			newel.removeAttribute("name");
+			this.parent.insertBefore(newel, this.anchor);
 		} else {
 			this.parent.removeChild(x.getRoot());
-			this.parent.insertBefore(x.getRoot(), this.baseEl);
+			this.parent.insertBefore(x.getRoot(), this.anchor);
 		}
 		this.trnids.push(id);
 		var res =  x.setData(data);
@@ -598,30 +606,34 @@ var TemplateJS = function(){
 	View.prototype.rebuildMap = function(rootel) {
 		if (!rootel) rootel = this.root;
 		this.byName = {};
-		var groups = [];
-		var placeholders = [rootel.querySelectorAll("[data-name]"),rootel.querySelectorAll("[name]")]
-		for (var x = 0; x < 2; x++) {
-			var pl = placeholders[x];
-			var i;			
-			var cnt = pl.length;
-			for (i = 0; i < cnt; i++) {
-				var plx = pl[i];
-				if (typeof groups.find(function(x) {return x.contains(plx);}) == "undefined") {
-					var name = plx.name || plx.dataset.name || plx.getAttribute("name");
-					var lname = name.split(",");
-					lname.forEach(function(vname) {								
-						if (vname.endsWith("[]")) {
-							groups.push(new Subgroup(plx,rootel));
-							vname = vname.substr(0,vname.length-2);
-							if (plx.template_js_group === undefined)
-								plx.template_js_group = new GroupManager(plx);
-						} 						
-						if (!(vname in this.byName)) this.byName[vname] = [];
-						this.byName[vname].push(plx);
-					},this);
+		
+		this.groups = this.groups.filter(function(x) {return x.isConnectedTo(rootel);});
+		this.groups.forEach(function(x) {this.byName[x.name] = x;},this);
+		
+		var elems = rootel.querySelectorAll("[data-name],[name]");
+		var cnt = elems.length;
+		var i;
+		for (i = 0; i < cnt; i++) {
+			var pl = elems[i];
+			if (rootel.contains(pl)) {
+				var name = pl.name || pl.dataset.name || pl.getAttribute("name");
+				name.split(" ").forEach(function(vname) {
+					if (vname) {
+						if (vname && vname.endsWith("[]")) {
+							vname = vname.substr(0,name.length-2);
+							var gm = new GroupManager(pl, name);
+							this.groups.push(gm);
+							if (!Array.isArray(this.byName[vname])) this.byName[vname] = [];
+							this.byName[vname].push(gm);
+						} else{
+							if (!Array.isArray(this.byName[vname])) this.byName[vname] = [];
+							this.byName[vname].push(pl);
+						}
+					}
+				},this);
+
 				}
-			}
-		}
+			}		
 	}
 	
 	///Sets data in the view
@@ -653,36 +665,52 @@ var TemplateJS = function(){
 		}
 		
 		function processItem(itm, elemArr, val) {
-				elemArr.forEach(function(elem) {
-					var res /* = undefined*/;
-					if (elem) {
-						if (typeof val == "object") {
-							if (checkSpecialValue(val,elem)) {
-								return							
-							} else if (!Array.isArray(val)) {
-								updateElementAttributes(elem,val);
-								if (!("value" in val)) {
-									return;
-								}else {
-									val = val.value;
-									if (typeof val == "object" && checkSpecialValue(val,elem)) return;
+					elemArr.forEach(function(elem) {
+						var res /* = undefined*/;
+						if (elem) {
+							if (typeof val == "object") {
+								if (checkSpecialValue(val,elem)) {
+									return							
+								} else if (!Array.isArray(val)) {
+									updateElementAttributes(elem,val);
+									if (!("value" in val)) {
+										return;
+									}else {
+										val = val.value;
+										if (typeof val == "object" && checkSpecialValue(val,elem)) return;
+									}
+								}
+							}
+							if (elem instanceof GroupManager) {
+								var group = elem;
+								group.begin();
+								if (Array.isArray(val) ) {
+									var i = 0;
+									var cnt = val.length;
+									for (i = 0; i < cnt; i++) {
+										var id = val[i]._id || i;
+										group.setValue(id, val[i]);
+									}
+								}
+								return group.finish();
+							} else {
+								var eltype = elem.tagName;
+								if (elem.dataset.type) eltype = elem.dataset.type;			
+								if (val !== undefined) {
+									var eltypeuper = eltype.toUpperCase();
+									if (View.customElements[eltypeuper]) {
+										res = View.customElements[eltypeuper].setValue(elem,val);
+									} else {
+										res = updateBasicElement(elem, val);								
+									}
 								}
 							}
 						}
-						var eltype = elem.tagName;
-						if (elem.dataset.type) eltype = elem.dataset.type;			
-						if (val !== undefined) {
-							var eltypeuper = eltype.toUpperCase();
-							if (View.customElements[eltypeuper]) {
-								res = View.customElements[eltypeuper].setValue(elem,val);
-							} else {
-								res = updateBasicElement(elem, val);								
-							}
-						}
-					}
-					return res;
-				});
-			}
+						return res;
+					});
+		
+		}
+		
 			
 		
 		
@@ -832,18 +860,24 @@ var TemplateJS = function(){
 		keys.forEach(function(itm) {
 			var elemArr = me.byName[itm];
 			elemArr.forEach(function(elem){			
-				if (elem && !elem.dataset.readonly) {
-					var val;
-					var eltype = elem.tagName;
-					if (elem.dataset.type) eltype = elem.dataset.type;
-					var eltypeuper = eltype.toUpperCase();
-					if (View.customElements[eltypeuper]) {
-						val = View.customElements[eltypeuper].getValue(elem, res[itm]);
-					} else {
-						val = readBasicElement(elem,res[itm]);					
-					}
-					if (typeof val != "undefined") {
-						res[itm] = val;
+				if (elem) {					
+					if (elem instanceof GroupManager) {
+						var x =  elem.readData();
+						if (res[itm] === undefined) res[itm] = x;
+						else x.forEach(function(c){res[itm].push(c);});
+					} else if (!elem.dataset || !elem.dataset.readonly) {
+						var val;
+						var eltype = elem.tagName;
+						if (elem.dataset.type) eltype = elem.dataset.type;
+						var eltypeuper = eltype.toUpperCase();
+						if (View.customElements[eltypeuper]) {
+							val = View.customElements[eltypeuper].getValue(elem, res[itm]);
+						} else {
+							val = readBasicElement(elem,res[itm]);					
+						}
+						if (typeof val != "undefined") {
+							res[itm] = val;
+						}
 					}
 				}
 			});

@@ -1,6 +1,8 @@
 
 
 var View = TemplateJS.View;
+var tableView;
+var formView;
 
 function start() {
 	"use strict";
@@ -18,12 +20,14 @@ function start() {
 				});
 	
 	
+	tableView = list;
 	function addUser() {
 		var dlg = View.createFromTemplate("fillform");
 		dlg.openModal();		
 		dlg.setFirstTabElement("first_name");
 		dlg.setCancelAction(function() {dlg.close();}, "cancelbutt");
 		dlg.setDefaultAction(validateAndSave.bind(dlg,null), "okbutt");
+		formView = dlg;
 	}
 	
 	function validateAndSave(id) {		
@@ -43,7 +47,8 @@ function start() {
 		dlg.openModal();		
 		dlg.setFirstTabElement("first_name");
 		dlg.setCancelAction(function() {dlg.close();}, "cancelbutt");
-		dlg.setDefaultAction(validateAndSave.bind(dlg,id), "okbutt");		
+		dlg.setDefaultAction(validateAndSave.bind(dlg,id), "okbutt");
+		formView = dlg;
 	}
 	
 	function markDeleteAll() {
