@@ -52,6 +52,12 @@ var TemplateJS = function(){
 		}
 	}
 	
+	function restartAnimation(elem) {
+		var parent = elem.parentElement;
+		var next = elem.nextSibling;
+		parent.insertBefore(elem, next);
+	}
+	
 	function createElement(def) {
 		if (typeof def == "string") {
 			return document.createElement(def);
@@ -203,10 +209,9 @@ var TemplateJS = function(){
 				this.root.classList.remove(this.root.dataset.openAnim);
 			}			
 			var closeAnim = this.root.dataset.closeAnim;
-			void this.root.offsetWidth; //reflow
-			return delay(1)
-				.then(this.root.classList.add.bind(this.root.classList,closeAnim))
-				.then(waitForAnimation.bind(null,this.root))
+			this.root.classList.add(closeAnim);
+			restartAnimation(this.root);
+			return waitForAnimation(this.root)
 				.then(this.close.bind(this,true));
 		} else {
 			this.root.parentElement.removeChild(this.root);
@@ -1129,7 +1134,8 @@ var TemplateJS = function(){
 		"loadTemplate":loadTemplate,
 		"CustomElement":CustomElementEvents,
 		"once":once,
-		"delay":delay
+		"delay":delay,
+		"restartAnimation":restartAnimation
 	};
 	
 }();
