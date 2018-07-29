@@ -3,67 +3,137 @@
 var TemplateJS = function(){
 	"use strict";
 
-	function loadTemplate(templateRef, templateTag) {
-		
-		var templEl;
-		var templName;
-		if (typeof templateRef == "string") {
-			templEl = document.getElementById(templateRef);
-			templName = templateRef;
-		} else {
-			templEl = templateRef;
-		}
-		
-		if (!templEl) {
-			throw new Error("Template element was not found: " + templateRef);
-		}
+	function once(element, events, args) {
 
-		if (!templateTag) {
-			if (templEl.dataset.tag) templateTag=templEl.dataset.tag; 
-			else templateTag = "div";
-		}
+		return new Promise(function(ok) {
+			
+			function fire(z) {
+				events.forEach(function(x) {
+					element.removeEventListener(x, fire, args);				
+				});
+				ok(z);
+			}
+			
+			events.forEach(function(x) {
+				element.addEventListener(x, fire, args);
+			});
+		});
+	};
+	
+	function delay(time, arg) {
+		return new Promise(function(ok) {
+			setTimeout(function() {
+				ok(arg);
+			},time);
+		});
+	};
+	
+	function detectAnimationEvents(elem) {
+		var computed = window.getComputedStyle(elem, null); 
+		var res = [];
 		
-		var div = document.createElement(templateTag);
-		if (templEl.dataset.class) {
-			div.setAttribute("class", templEl.dataset.class);
-		} else if (templName) {
-			div.classList.add("templ_"+templName);				
+		if (computed.transitionDuration != "0" && computed.transitionDuration != "0s") {
+			res.push("transitionend");
 		}
-		
-		if (templEl.dataset.style) {
-			div.setAttribute("style", templEl.dataset.style);
+		if (computed.animationDuration != "0" && computed.animationDuration != "0s") {
+			res.push("animationend");
 		}
-		
-		if (templEl.content) {
-			var imp = document.importNode(templEl.content,true);
-			div.appendChild(imp);
+		return res;
+	}
+	
+	function waitForAnimation(elem, arg) {
+		var res = detectAnimationEvents(elem);
+		if (res.length) {
+			return once(elem, res).then(function(){
+				return arg;
+			})
 		} else {
-			var x = templEl.firstChild;
+			return arg;
+		}
+	}
+	
+	function createElement(def) {
+		if (typeof def == "string") {
+			return document.createElement(def);
+		} else if (typeof def == "object") {
+			if ("text" in def) {
+				return document.createTextNode(def.text);
+			} else if ("tag" in def) {
+				var elem = document.createElement(def.tag);
+				var attrs = def.attrs || def.attributes;
+				if (typeof attrs == "object") {
+					for (var i in attrs) {
+						elem.setAttribute(i,attrs[i]);
+					}
+				}
+				if ("html" in def) {
+					elem.innerHTML=def.html;
+				} else if ("text" in def) {
+					elem.appendChild(document.createTextNode(def.text));
+				} else {
+					var content = def.content || def.value || def.inner;
+					if (content !== undefined) {
+						elem.appendChild(loadTemplate(content));
+					}
+				}
+				return elem;
+			}
+		}
+		return document.createElement("div");
+	}
+	
+	function loadTemplate(templateID) {
+		var tempel;
+		if (typeof templateID == "string") {
+			tempel = document.getElementById(templateID);
+			if (!tempel) {
+				throw new Error("Template element doesn't exists: "+templateID);				
+			}
+		} else if (typeof templateID == "object") {
+			if (templateID instanceof Element) {
+				tempel = templateID;
+			} else if (Array.isArray(templateID)) {
+				return templateID.reduce(function(accum,item){
+					var x = loadTemplate(item);
+					if (accum === null) accum = x; else accum.appendChild(x);
+					return accum;
+				},null)
+			} else {
+				var res = document.createDocumentFragment();
+				res.appendChild(createElement(templateID));
+				return res;
+			}
+		}
+		var cloned;
+		if ("content" in tempel) {
+			cloned = document.importNode(tempel.content,true);
+		} else {
+			cloned = document.createDocumentFragment();
+			var x= tempel.firstChild;
 			while (x) {
-				div.appendChild(x.cloneNode(true));
+				cloned.appendChild(x.cloneNode(true));
 				x = x.nextSibling;
 			}
 		}
-		return div;
-	};
+		return cloned;
 		
-
+	}
+	
+		
 	function View(elem) {
 		if (typeof elem == "string") elem = document.getElementById(elem);
 		this.root = elem;
 		this.marked =[];
 		this.groups =[];
-		this.rebuildMap();		
+		this.rebuildMap();
+		//apply any animation now
+		if (this.root.dataset.openAnim) {
+			this.root.classList.add(this.root.dataset.openAnim);
+		}
 		
 	};
 	
-	function Group(element, parent, before) {
-		this.element = element;
-		this.parent = parent;
-		this.before = before;
-	}
-	
-	
+		
 	///Get root element of the view
 	View.prototype.getRoot = function() {
 		return this.root;
@@ -101,7 +171,7 @@ var TemplateJS = function(){
 	View.prototype.setVisibility = function(vis_state) {
 		if (vis_state == View.VISIBLE) {
 			this.root.hidden = false;
-			this.root.style.visibility = "inherit";
+			this.root.style.visibility = "";
 		} else if (vis_state == View.TRANSPARENT) {
 			this.root.hidden = false;
 			this.root.style.visibility = "hidden";			
@@ -119,23 +189,48 @@ var TemplateJS = function(){
 	}
 	
 	///Closes the view by unmapping it from the doom
-	/** The view can be remapped through the setConent or open() */
-	View.prototype.close = function() {		
-		this.root.parentElement.removeChild(this.root);
-		if (this.modal_elem) this.modal_elem.parentElement.removeChild(this.modal_elem);
+	/** The view can be remapped through the setConent or open() 
+	 * 
+	 * @param skip_anim set true to skip any possible closing animation
+	 *  
+	 * @return function returns promise once the view is closed, this is useful especially when
+	 * there is closing animation
+	 * 
+	 * */
+	View.prototype.close = function(skip_anim) {		
+		if (this.root.dataset.closeAnim && !skip_anim) {
+			if (this.root.dataset.openAnim) {
+				this.root.classList.remove(this.root.dataset.openAnim);
+			}			
+			var closeAnim = this.root.dataset.closeAnim;
+			void this.root.offsetWidth; //reflow
+			return delay(1)
+				.then(this.root.classList.add.bind(this.root.classList,closeAnim))
+				.then(waitForAnimation.bind(null,this.root))
+				.then(this.close.bind(this,true));
+		} else {
+			this.root.parentElement.removeChild(this.root);
+			if (this.modal_elem) this.modal_elem.parentElement.removeChild(this.modal_elem);
+			return Promise.resolve();
+		}
 	}
 
 	///Opens the view as toplevel window
 	/** @note visual of toplevel window must be achieved through styles. 
 	 * This function just only adds the view to root of page
+	 * 
+	 * @note function also installs focus handler allowing focus cycling by TAB key
 	 */
 	View.prototype.open = function() {
 		document.body.appendChild(this.root);
+		this._installFocusHandler();
 	}
 
 	///Opens the view as modal window
 	/**
-	 * Append lightbox which prevents
+	 * Append lightbox which prevents accesing background of the window
+	 * 
+	 * @note function also installs focus handler allowing focus cycling by TAB key
 	 */
 	View.prototype.openModal = function() {
 		if (this.modal_elem) return;
@@ -165,23 +260,105 @@ var TemplateJS = function(){
 	
 	///Creates view at element specified by its name
 	/**@param name name of the element used as root of View
-	 * @param visibility allows to specify visibility. Default is hidden, 
-	 * 		so if you want to show the view, you have to call show 
+	 * 
+	 * @note view is not registered as collection, so it is not accessible from the parent
+	 * view though the findElements() function. However inner items are still visible directly
+	 * on parent view.  
 	 */
-	View.prototype.createView = function(name, visibility /* =View.HIDDEN */) {
-		var elem = this.byName[name];
+	View.prototype.createView = function(name) {
+		var elem = this.findElements(name);
 		if (!elem) throw new Error("Cannot find item "+name);		
 		if (elem.length != 1) throw new Error("The element must be unique "+name);
 		var view = new View(elem[0]);
-		view.setVisibility(visibility);
 		return view;
-	}
+	};
+	
+	///Creates collection at given element
+	/**
+	 * @param selector which defines where collection is created. If there are multiple
+	 * elements matching the selector, they are all registered as collection.
+	 * @param name new name of collection. If the selector is also name of existing
+	 * item, then this argument is ignored, because function replaces item by collection 
+	 * 
+	 * @note you don't need to call this function if you make collection by adding [] after
+	 * the name 
+	 */
+	View.prototype.createCollection = function(selector, name) {
+		var elems = this.findElements(selector);
+		if (typeof selector == "string" && this.byName[selector]) name = selector;		
+		var res = elems.reduce(function(sum, item){
+			var x = new GroupManager(item, name);
+			this.groups.push(x);
+			sum.push(x);
+			return sum;
+		},[]); 
+		this.byName[name] = res;
+	};
 	
 	///Returns the name of class used for the mark() and unmark()
 	/**
 	 * If you need to use different name, you have to override this value
 	 */
 	View.prototype.markClass = "mark";	
+	
+	///Finds elements specified by selector or name
+	/**
+	 * @param selector can be either a string or an array. If the string is specified, then
+	 * the sting can be either name of the element(group), which is specified by data-name or name
+	 * or it can be a CSS selector if it starts by dot ('.'), hash ('#') or brace ('['). It
+	 * can also start by $ to specify, that rest of the string is complete CSS selector, including
+	 * a tag name ('$tagname'). If the selector is array, then only last item can be selector. Other
+	 * items are names of collections as the function searches for the elements inside of 
+	 * collections where the argument specifies a search path (['group-name','index1','index2','item'])
+	 * 
+	 * @note if `index1` is null, then all collections of given name are searched. if `index2` is
+	 *  null, then result is all elements matching given selector for all items in the collection. This
+	 *  is useful especially when item is name, because searching by CSS selector is faster if
+	 *  achieveded directly from root
+	 * 
+	 *  
+	 */
+	View.prototype.findElements = function(selector) {
+		if (typeof selector == "string") {
+			if (selector) {
+				var firstChar =selector.charAt(0);
+				switch (firstChar) {
+					case '.':
+					case '[':			
+					case '#': return Array.from(this.root.querySelectorAll(selector));
+					case '$': return Array.from(this.root.querySelectorAll(selector.substr(1)));
+					default: return selector in this.byName?this.byName[selector]:[];
+				}
+			}
+		} else if (Array.isArray(selector)) {
+			if (selector.length==1) {
+				return this.findElements(selector[0]);
+			}
+			if (selector.length) {
+				var gg = this.byName[selector.shift()];
+				if (gg) {
+						var idx = selector.shift();
+						if (idx === null) {
+							return gg.reduce(function(sum,item){
+								if (item.findElements)
+									return sum.concat(item.findElements(selector));
+								else 
+									return sum;
+							},[]);						
+						} else {
+							var g = gg[idx];
+							if (g && g.findElements) {
+								return g.findElements(selector);
+							}
+						}
+					}
+			}			
+		} else if (typeof selector == "object" && selector instanceof Element) {
+			return [selector];
+		} 
+		return [];
+	}
+	
 	
 	///Marks every element specified as CSS selector with a mark
 	/**
@@ -194,14 +371,14 @@ var TemplateJS = function(){
 	 * 
 	 */
 	View.prototype.mark = function(selector) {
-		var items = this.byName[selector];
+		var items = this.findElements(selector);
 		var cnt = items.length;
 		for (var i = 0; i < cnt; i++) {
 			items[i].classList.add(this.markClass);
 			this.marked.push(items[i]);
-		}		
-		
+		}				
 	};
+		
 	
 	///Removes all marks
 	/** Useful to remove any highlight in the View
@@ -335,12 +512,14 @@ var TemplateJS = function(){
 			fe.style.display="block";
 			this.root.insertBefore(fe,this.root.firstChild);
 			fe.addEventListener("focus", focusHandler.bind(this,lastElement));
+			
+			firstElement.focus();
 		}				
 		this.focus_top = firstElement;
 		this.focus_bottom = lastElement;
 	};
 	
-	///Sets first TAB element and installs focus handler
+	///Sets first TAB element and installs focus handler (obsolete)
 	/**
 	 * @param el the first TAB element in the form, it also receives a focus. You should
 	 * specify really first TAB, even if you need to move focus elsewhere. Just move the
@@ -351,118 +530,16 @@ var TemplateJS = function(){
 	 * is need to have a home position defined.
 	 */
 	View.prototype.setFirstTabElement = function(el) {
-		if (typeof el == "string") {
-			var f = this.byName[el];
-			if (f) return this.setFirstTabElement(f[0]);
-			else throw new Error("Item was not found: "+el);
-		}
-		el.focus();
 		this._installFocusHandler();
 	}
-	
-	///Set contents of the view with animation
-	/**
-	 * @note The animation is achieved through CSS. The function doesn't animate anything,
-	 * it only helps with timing
-	 * 
-	 * @param el element to set as new content. If there is other active element, it will be 
-	 * replaced with animation
-	 * @param animParams paramaters of animation, the object described below
-	 * 
-	 * animParams contains
-	 * 
-	 *  - duraction = specifies animation duration in milliseconds. Duration of enter animation
-	 *  must me equal to duration of exit animation
-	 *  - enterClass = class which contains enter animation
-	 *  - exitClass = class which contains exit animation
-	 *  - parallel = if set to true, enter and exit animation are played at same time. 
-	 *                Default value is false, so first exit animation, then enter animation
-	 *  - 
-	 *  
-	 *  @retun function returns promise which is resolved after content is replaced
-	 *  
-	 *  @note The content itself is considered as replaced instantly, so function
-	 *  setData will work with the new content
-	 *  
-	 *   //TODO test
-	 */
-	View.prototype.setContentWithAnim = function(el, animParams) {
-		
-		var duration = animParams.duration;
-		var enterClass = animParams.enterClass;
-		var exitClass = animParams.exitClass;
-		var parallel = animParams.parallel;
-		
-		var root = this.root;
-	
-		function leave() {
-			var cur = root.firstChild
-			if (cur) {
-				cur.classList.remove(enterClass);
-				cur.classList.add(exitClass);
-				return new Promise(function(ok){
-					setTimeout(function(){
-						root.removeChild(cur);
-						ok();
-					},duration);
-				});
-			} else {
-				return new Promise.resolve();
-			}
-		}
-		
-		function enter() {
-			el.classList.add(enterClass);
-			root.appendChild(el);			
-		}
-		
-		if (this.nextPhase) {
-			this.nextPhase = this.nextPhase.then(leave);
-		} else {
-			this.nextPhase = leave();	
-		}
-
-		this.rebuildMap(el);
-
-		if (parallel) {
-			this.nextPhase = Promise.all([this.nextPhase, enter()]);
-		} else {
-			this.nextPhase = this.nextPhase.then(enter);
-		}
-		return this.nextPhase;
-	}
-
-	///Loads template with animation
-	/**
-	 * @param t template ID
-	 * @param animParams parameters of animation, see setContentWithAnim
-	 */
-	View.prototype.loadTemplateWithAnim = function(t, animParams) {
-		return this.setContentWithAnim(loadTemplate(t), animParams);
-	}
-
-	function Subgroup(elem, topelem) {
-		this.elem = elem;		
-		this.topelem = topelem;
-	}
-	
-	Subgroup.prototype.contains = function(el) {
-		while (el.parentNode) {
-			if (el.parentNode == this.elem) return true;
-			if (el.parentNode == this.topelem) return false;
-			el = el.parentNode;
-		}
-		return false;
-	}
-
 	
 	function GroupManager(template_el,name) {
 		this.baseEl = template_el;
 		this.parent = template_el.parentNode;
 		this.anchor = document.createComment("><");
 		this.idmap={};
-		this.trnids=[];
-		this.result = [];		
+		this.result = [];
+		this.curOrder =[];		
 		this.parent.insertBefore(this.anchor, this.baseEl);
 		this.parent.removeChild(this.baseEl);
 		this.name = name;
@@ -476,43 +553,93 @@ var TemplateJS = function(){
 	}
 	
 	GroupManager.prototype.begin = function() {
-		this.trnids=[];
 		this.result = [];
+		this.newOrder = [];		
 	}
 	
-	GroupManager.prototype.setValue = function(id, data) {
+	
+	GroupManager.prototype.setValue = function(id, data) {			
 		var x = this.idmap[id];
 		if (!x) {
 			var newel = this.baseEl.cloneNode(true);
 			var newview = new View(newel);
-			x = this.idmap[id] = newview;
-			this.parent.insertBefore(newel, this.anchor);
+			x = this.idmap[id] = newview;			
 		} else {
-			this.parent.removeChild(x.getRoot());
-			this.parent.insertBefore(x.getRoot(), this.anchor);
+			this.lastElem = x.getRoot();
 		}
-		this.trnids.push(id);
+		this.newOrder.push(id);
+		var t = data["@template"];
+		if (t) {
+			x.loadTemplate(t);
+		}
 		var res =  x.setData(data);
 		res = this.result.concat(res);		
 	}
 	
+	GroupManager.prototype.findElements = function(selector) {
+		var item = selector.shift();
+		if (item === null) {
+			var res = [];
+			for (var x in this.idmap) {
+				res = res.concat(this.idmap[x].findElements(selector));
+			}
+			return res;
+		} else {			
+			return this.idmap[item]?this.idmap[item].findElements(selector):[];
+		}
+	}
+	
 	GroupManager.prototype.finish = function() {
-		var newidmap = {};
-		this.trnids.forEach(function(x){			
+		var newidmap = {};		
+		this.newOrder.forEach(function(x){
 			if (this.idmap[x]) {
 				newidmap[x] = this.idmap[x];
 				delete this.idmap[x];
-			}			
+			} else {
+				throw new Error("Duplicate row id: "+x);
+			
+			}		
 		},this);
+		var oldp = 0;
+		var oldlen = this.curOrder.length;		
+		var newp = 0;
+		var newlen = this.newOrder.length;
+		var ep = this.anchor.nextSibling;
+		var movedid = {};
+		while (oldp < oldlen) {
+			var oldid = this.curOrder[oldp];
+			var newid = this.newOrder[newp];
+			if (oldid in this.idmap) {
+				oldp++;
+				ep = this.idmap[oldid].getRoot().nextSibling;
+			} else if (oldid == newid) {
+				oldp++;
+				newp++;
+				ep = newidmap[oldid].getRoot().nextSibling;
+			} else if (!movedid[oldid]) {
+				this.parent.insertBefore(newidmap[newid].getRoot(),ep);
+				newp++;
+				movedid[newid] = true;
+			} else {
+				oldp++;
+			}
+		}
+		while (newp < newlen) {			
+			var newid = this.newOrder[newp];
+			this.parent.insertBefore(newidmap[newid].getRoot(),ep);
+			newp++;			
+		}
 		for (var x in this.idmap) {
 			try {
-				this.parent.removeChild(this.idmap[x].getRoot());			
+				this.idmap[x].close();
 			} catch (e) {
 				
 			}
 		}
+		
 		this.idmap = newidmap;
-		this.trnids = [];
+		this.curOrder = this.newOrder;		
+		this.newOrder = [];
 		return this.result;
 		
 	}
@@ -522,7 +649,7 @@ var TemplateJS = function(){
 		var out = [];		
 		for (var x in this.idmap) {
 			var d = this.idmap[x].readData();
-			d._id = x;
+			d["@id"] = x;
 			out.push(d);			
 		}
 		return out;
@@ -688,7 +815,7 @@ var TemplateJS = function(){
 									var i = 0;
 									var cnt = val.length;
 									for (i = 0; i < cnt; i++) {
-										var id = val[i]._id || i;
+										var id = val[i]["@id"] || i;
 										group.setValue(id, val[i]);
 									}
 								}
@@ -711,11 +838,8 @@ var TemplateJS = function(){
 		
 		}
 		
-			
-		
-		
 		for (var itm in data) {
-			var elemArr = me.byName[itm];
+			var elemArr = this.findElements(itm);
 			if (elemArr) {
 				var val = data[itm];
 				if (typeof val == "object" && (val instanceof Promise)) {
@@ -822,21 +946,6 @@ var TemplateJS = function(){
 	}
 	
 	function updateBasicElement (elem, val) {
-		if (Array.isArray(val)) {
-			var group = elem.template_js_group;
-			if (group) {
-				group.begin();
-				if (Array.isArray(val) ) {
-					var i = 0;
-					var cnt = val.length;
-					for (i = 0; i < cnt; i++) {
-						var id = val[i]._id || i;
-						group.setValue(id, val[i]);
-					}
-					return group.finish();
-				}
-			}
-		} 
 		View.clearContent(elem);
 		if (val !== null && val !== undefined) {
 			elem.appendChild(document.createTextNode(val));
@@ -858,7 +967,7 @@ var TemplateJS = function(){
 		var res = {};
 		var me = this;
 		keys.forEach(function(itm) {
-			var elemArr = me.byName[itm];
+			var elemArr = me.findElements(itm);
 			elemArr.forEach(function(elem){			
 				if (elem) {					
 					if (elem instanceof GroupManager) {
@@ -939,23 +1048,38 @@ var TemplateJS = function(){
 	 * without arguments the view will be hidden and must be shown by the function show()
 	 */
 	View.createPageRoot = function(visibility /* = View.HIDDEN */) {
-		var elem = document.createElement("toplevel-view");
+		var elem = document.createElement(View.topLevelViewName);
 		document.body.appendChild(elem)
 		var view = new View(elem);
 		view.setVisibility(visibility);
 		return view;
 	}
 	
-	///Create empty view, which can be eventually opened or set as subview
-	View.create = function() {
-		var view = new View(document.createElement("toplevel-view"));
-		return view;		
-	}
+	View.topLevelViewName = "toplevel-view";
 	
-	View.createFromTemplate = function(id, tempTag) {
-		var t = loadTemplate(id, tempTag)
-		return new View(t);
+	///Creates view from template
+	/**
+	 * @param id of template. The template must by a single-root template or extra tag will be created
+	 *  If you need to create from multi-root template, you need to specify definition of parent element
+	 *  @param def parent element definition, it could be single tag name, or object, which 
+	 *  specifies "tag" as tagname and "attrs" which contains key=value attributes
+	 *  
+	 *  @return newly created view
+	 */
+	View.fromTemplate = function(id, def) {
+		var t = loadTemplate(id)
+		var el = t.firstChild;
+		var nx = el.nextSibling;
+		if (nx != null) {
+			if (nx.nodeType != Node.TEXT_NODE || nx.textContent.trim().length > 0) {
+				el = createElement(def);
+				el.appendChild(t);				
+			}
+		}
+		return new View(el);
 	}
+
+	View.createFromTemplate = View.fromTemplate;
 	
 	function CustomElementEvents(setval,getval) {
 		this.setValue = setval;
@@ -1003,7 +1127,9 @@ var TemplateJS = function(){
 	return {
 		"View":View,
 		"loadTemplate":loadTemplate,
-		"CustomElement":CustomElementEvents
+		"CustomElement":CustomElementEvents,
+		"once":once,
+		"delay":delay
 	};
 	
 }();

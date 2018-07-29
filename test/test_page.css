@@ -5,21 +5,68 @@ body {
 	
 }
 
-.templ_ppltable table {
+table.ppltable {
 	width: 100%;
 	border-collapse: collapse;
 	border: 1px solid;
 }
-.templ_ppltable th{
+table.ppltable th{
     border-collapse: collapse;
     color:white;
     background-color: #444;
     border-right: 1px solid white;
 }  
 
-.templ_ppltable td{
-    border: 1px solid black;
+@keyframes rowAnim {
+ 	0% {line-height: 0em;}
+	100% {line-height: 1em;}
 }
+
+table.ppltable tr{
+	border-bottom: 1px solid;
+}
+
+table.ppltable td{
+	border-right: 1px solid;
+	position: relative
+}
+
+table.ppltable td input{
+	position: absolute;
+	left:0;
+	top:0;
+	width: 100%;	
+}
+
+table.ppltable div.button {
+	display:inline-block;
+	background-color: buttonface;
+	border: 1px outset buttonface;
+	font-size: smaller;
+	padding: 4px;	
+	box-sizing:border-box;
+	width: 100%;
+	text-align: center;
+	cursor: pointer;
+	border-radius: 5px;
+}
+
+table.ppltable div.button:active {
+	border: 1px inset buttonface;
+	transform: translate(1px,1px);
+	padding: 4px;
+	
+}
+
+table.ppltable tr.addrow{
+	animation: rowAnim 300ms ;				
+}
+
+
+table.ppltable tr.delrow {
+	animation: rowAnim 300ms  reverse;		
+}
+
 .dlgbutt,.dlgbutt_left {
 	display:block;
 	width:5rem;
@@ -32,6 +79,12 @@ body {
 	float:left;
 	} 
 
+@keyframes windowAnim {
+	100%   {opacity: 1;transform: scale(1);}
+	0% {opacity: 0;transform: scale(1.1);}
+}
+
+
 dlg-box {
 	display:block;
 	width: 20rem;
@@ -42,7 +95,15 @@ dlg-box {
 	background-color: white;
 	top: 20vh;
 	box-shadow: 3px 3px 20px #00000080;
-	padding:1rem;
+	padding:1rem;		
+}
+
+dlg-box.open {
+	animation: windowAnim 300ms ease-out;
+}
+
+dlg-box.close {
+	animation: windowAnim 300ms ease-out reverse;
 }
 
 dlg-box input[type=text] {

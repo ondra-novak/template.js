@@ -10,24 +10,19 @@ function start() {
 	var users = {};
 	var counter = 1;
 	
-	var root = View.createFromTemplate("mainpage");
-	root.open();
-	var list = View.createFromTemplate("ppltable");
-	root.setData({"tablepart": list});
-	list.setData({"addbut":{"!click":addUser},
+	var root = View.createPageRoot(View.VISIBLE);
+	root.loadTemplate("mainpage")
+	var ppltable = root.createView("tablepart");
+	ppltable.loadTemplate("ppltable")
+	ppltable.setData({"addbut":{"!click":addUser},
 		          "deleteall":{"!click":markDeleteAll},
 		          "delbutt":{"!click":delSelected}
 				});
 	
 	
-	tableView = list;
+	tableView = ppltable;
 	function addUser() {
-		var dlg = View.createFromTemplate("fillform");
-		dlg.openModal();		
-		dlg.setFirstTabElement("first_name");
-		dlg.setCancelAction(function() {dlg.close();}, "cancelbutt");
-		dlg.setDefaultAction(validateAndSave.bind(dlg,null), "okbutt");
-		formView = dlg;
+		editAction(null);
 	}
 	
 	function validateAndSave(id) {		
@@ -35,45 +30,49 @@ function start() {
 		var editid = id?id:""+(counter++);
 		data["editbutt"] = {"!click":editAction.bind(null,editid)};
 		data["delete"] = {"!click":checkselected};
-		data["_id"] = editid;
+		data["@id"] = editid;
 		users[editid] = data;		
-		list.setData({"rows":Object.values(users)});	
-		this.close();
+		ppltable.setData({"rows":Object.values(users)});	
 	}
 	
 	function editAction(id) {
 		var dlg = View.createFromTemplate("fillform");
-		dlg.setData(users[id]);
+		if (id) dlg.setData(users[id]);
 		dlg.openModal();		
-		dlg.setFirstTabElement("first_name");
 		dlg.setCancelAction(function() {dlg.close();}, "cancelbutt");
-		dlg.setDefaultAction(validateAndSave.bind(dlg,id), "okbutt");
+		dlg.setDefaultAction(function() {dlg.close().then(validateAndSave.bind(dlg,id))}, "okbutt");
 		formView = dlg;
+		return dlg;
 	}
 	
 	function markDeleteAll() {
-		var state = list.readData();
+		var state = ppltable.readData();
 		state.rows.forEach(function(x){
 			x["delete"] = state.deleteall;
 		});
 		state["delbutt"] = {".disabled":state.deleteall==false || state.rows == 0};
-		list.setData(state);
+		ppltable.setData(state);
 		
 	}
 	
 	function checkselected() {
-		var state = list.readData();
+		var state = ppltable.readData();
 		var checked = state.rows.find(function(x){return x["delete"] != false;}) !== undefined;
 		state["delbutt"] = {".disabled":!checked};
-		list.setData(state);
+		ppltable.setData(state);
 	}
 
 	function delSelected() {
-		var state = list.readData();
-		var newrows = state.rows.filter(function(x) {return x["delete"]==false;});
+		var state = ppltable.readData();
+		var newrows = state.rows.filter(function(x) {
+			var d = x["delete"]==false;
+			if (!d) delete users[x["@id"]];
+			return d;
+		});
 		state.rows = newrows;
-		list.setData(state);
+		ppltable.setData(state);		
 		checkselected();
+		users = state.rows;
 		
 	}
 	
