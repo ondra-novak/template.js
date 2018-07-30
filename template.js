@@ -3,20 +3,15 @@
 var TemplateJS = function(){
 	"use strict";
 
-	function once(element, events, args) {
+	function once(element, event, args) {
 
 		return new Promise(function(ok) {
 			
 			function fire(z) {
-				events.forEach(function(x) {
-					element.removeEventListener(x, fire, args);				
-				});
+				element.removeEventListener(event, fire, args);				
 				ok(z);
-			}
-			
-			events.forEach(function(x) {
-				element.addEventListener(x, fire, args);
-			});
+			}			
+			element.addEventListener(event, fire, args);
 		});
 	};
 	
@@ -28,34 +23,52 @@ var TemplateJS = function(){
 		});
 	};
 	
-	function detectAnimationEvents(elem) {
-		var computed = window.getComputedStyle(elem, null); 
-		var res = [];
+	
+	function Animation(elem) {
+		this.elem = elem;
 		
-		if (computed.transitionDuration != "0" && computed.transitionDuration != "0s") {
-			res.push("transitionend");
-		}
+		var computed = window.getComputedStyle(elem, null); 
 		if (computed.animationDuration != "0" && computed.animationDuration != "0s") {
-			res.push("animationend");
-		}
-		return res;
-	}
-	
-	function waitForAnimation(elem, arg) {
-		var res = detectAnimationEvents(elem);
-		if (res.length) {
-			return once(elem, res).then(function(){
-				return arg;
-			})
+			this.type =  this.ANIMATION;
+		} else if (computed.transitionDuration != "0" && computed.transitionDuration != "0s") {
+			this.type = this.TRANSITION;
 		} else {
-			return arg;
-		}
+			this.type = this.NOANIM;
+		}	
+	}
+	 Animation.prototype.ANIMATION = 1;
+	 Animation.prototype.TRANSITION = 2;
+	 Animation.prototype.NOANIM = 0;
+	
+	 Animation.prototype.isAnimated = function() {
+		return this.type != this.NOANIM;
+	}
+	 Animation.prototype.isTransition = function() {
+		return this.type == this.TRANSITION;
+	}
+	 Animation.prototype.isAnimation = function() {
+		return this.type == this.ANIMATION;
 	}
 	
-	function restartAnimation(elem) {
-		var parent = elem.parentElement;
-		var next = elem.nextSibling;
-		parent.insertBefore(elem, next);
+	 Animation.prototype.restart = function() {
+		var parent = this.elem.parentElement;
+		var next = this.elem.nextSibling;
+		parent.insertBefore(this.elem, next);		
+	}
+	
+	 Animation.prototype.wait = function(arg) {
+		var res;
+		switch (this.type) {
+			case this.ANIMATION: res = once(this.elem,"animationend");break;
+			case this.TRANSITION: res = once(this.elem,"transitionend");break;
+			default:
+			case this.NOTHING:res = Promise.resolve();break;
+		}
+		if (arg !== undefined) {
+			return res.then(function(){return arg;});
+		} else {
+			return res;
+		}
 	}
 
 	///removes element from the DOM, but it plays "close" animation before removal
@@ -65,14 +78,17 @@ var TemplateJS = function(){
 	 * @return function returns Promise which resolves once the element is removed
 	 */
 	function removeElement(element, skip_anim) {
-		if (element.dataset.closeAnim && !skip_anim) {
+		if (element.dataset.closeAnim && !skip_anim) {			
 			if (element.dataset.openAnim) {
 				element.classList.remove(element.dataset.openAnim);
 			}			
 			var closeAnim = element.dataset.closeAnim;
 			element.classList.add(closeAnim);
-			restartAnimation(element);
-			return waitForAnimation(element).then(removeElement.bind(null,element,true));				
+			var anim = new Animation(element);
+			if (anim.isAnimation()) 
+				anim.restart();				
+			return anim.wait()
+				.then(removeElement.bind(null,element,true));				
 		} else {
 			element.parentElement.removeChild(element);
 			return Promise.resolve();
@@ -1146,7 +1162,7 @@ var TemplateJS = function(){
 		"CustomElement":CustomElementEvents,
 		"once":once,
 		"delay":delay,
-		"restartAnimation":restartAnimation,
+		"Animation":Animation,
 		"removeElement":removeElement
 	};
 	

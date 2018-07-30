@@ -71,8 +71,7 @@ function start() {
 		});
 		state.rows = newrows;
 		ppltable.setData(state);		
-		checkselected();
-		users = state.rows;
+		checkselected();		
 		
 	}
 	
