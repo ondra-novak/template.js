@@ -93,7 +93,18 @@ var TemplateJS = function(){
 			element.parentElement.removeChild(element);
 			return Promise.resolve();
 		}		
-	} 
+	}
+	
+	function addElement(parent, element, before) {
+		if (before === undefined) before = null;
+		if (element.dataset.closeAnim) {
+			element.classList.remove(element.dataset.closeAnim);
+		}
+		if (element.dataset.openAnim) {
+			element.classList.add(element.dataset.openAnim);
+		}
+		parent.insertBefore(element,before);		
+	}
 	
 	function createElement(def) {
 		if (typeof def == "string") {
@@ -203,7 +214,30 @@ var TemplateJS = function(){
 	View.prototype.loadTemplate = function(templateRef) {
 		this.setContent(loadTemplate(templateRef));
 	}
-	
+		
+	View.prototype.replace = function(view, skip_wait) {
+		
+		var nx = this.getRoot().nextSibling;
+		var parent = this.getRoot().parentElement;
+		var newelm = view.getRoot();
+		
+		view.modal_elem = this.modal_elem;
+		delete this.modal_elem;
+		
+		if (!skip_wait) {
+			var mark = document.createComment("#");
+			parent.insertBefore(mark,nx);
+			return this.close().then(function(){				
+				addElement(parent,view.getRoot(), mark);
+				parent.removeChild(mark);
+				return view;
+			});
+		} else {
+			this.close();
+			addElement(parent,view.getRoot(),nx);
+			return Promise.resolve(view);
+		}			
+	}
 	///Visibility state - whole view is hidden
 	View.HIDDEN = 0;
 	///Visibility state - whole view is visible
@@ -940,7 +974,7 @@ var TemplateJS = function(){
 		if (type == "checkbox" || type == "radio") {
 			if (typeof (val) == "boolean") {
 				elem.checked = !(!val);
-			} else if (typeof (val) == "object" && Array.isArray(val)) {
+			} else if (Array.isArray(val)) {
 				elem.checked = val.indexOf(elem.value) != -1;
 			} else if (typeof (val) == "string") {
 				elem.checked = elem.value == val;
@@ -1028,20 +1062,21 @@ var TemplateJS = function(){
 	
 	function readInputElement(elem, curVal) {
 		var type = elem.getAttribute("type");
-		if (type == "checkbox" || type == "radio") {
-			if (typeof curVal == "undefined") {
-				if (elem.checked) return elem.value;
-				else return false;
-			} else if (curVal === false) {
-				if (elem.checked) return [elem.value];
-				else return [];
-			} else if (Array.isArray(curVal)) {
-				if (elem.checked) return curVal.concat([elem.value]);
-				else return curVal
+		if (type == "checkbox") {
+			if (!elem.hasAttribute("value")) {
+				return elem.checked;						
 			} else {
-				if (elem.checked) return [curVal, elem.value];
-				else return [curVal];
+				if (!Array.isArray(curVal)) {
+					curVal = [];
+				}
+				if (elem.checked) {
+					curVal.push(elem.value);
+				}
+				return curVal;
 			}
+		} else if (type == "radio") {
+			if (elem.checked) return elem.value;
+			else return curVal;
 		} else {
 			return elem.value;
 		}
@@ -1087,7 +1122,7 @@ var TemplateJS = function(){
 		return view;
 	}
 	
-	View.topLevelViewName = "toplevel-view";
+	View.topLevelViewName = "div";
 	
 	///Creates view from template
 	/**
@@ -1112,6 +1147,17 @@ var TemplateJS = function(){
 	}
 
 	View.createFromTemplate = View.fromTemplate;
+	
+	View.createEmpty = function(tagName, attrs) {
+		if (tagName === undefined) tagName = "div";
+		var elem = document.createElement(tagName);
+		if (attrs) {
+			for (var v in attrs) {
+				elem.setAttribute(v, attrs[v]);
+			}
+		}
+		return new View(elem);			
+	}
 	
 	function CustomElementEvents(setval,getval) {
 		this.setValue = setval;
@@ -1163,7 +1209,8 @@ var TemplateJS = function(){
 		"once":once,
 		"delay":delay,
 		"Animation":Animation,
-		"removeElement":removeElement
+		"removeElement":removeElement,
+		"addElement":addElement
 	};
 	
 }();
