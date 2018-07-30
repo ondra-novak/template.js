@@ -57,6 +57,27 @@ var TemplateJS = function(){
 		var next = elem.nextSibling;
 		parent.insertBefore(elem, next);
 	}
+
+	///removes element from the DOM, but it plays "close" animation before removal
+	/**
+	 * @param element element to remove
+	 * @param skip_anim remove element immediately, do not play animation (optional)
+	 * @return function returns Promise which resolves once the element is removed
+	 */
+	function removeElement(element, skip_anim) {
+		if (element.dataset.closeAnim && !skip_anim) {
+			if (element.dataset.openAnim) {
+				element.classList.remove(element.dataset.openAnim);
+			}			
+			var closeAnim = element.dataset.closeAnim;
+			element.classList.add(closeAnim);
+			restartAnimation(element);
+			return waitForAnimation(element).then(removeElement.bind(null,element,true));				
+		} else {
+			element.parentElement.removeChild(element);
+			return Promise.resolve();
+		}		
+	} 
 	
 	function createElement(def) {
 		if (typeof def == "string") {
@@ -203,21 +224,11 @@ var TemplateJS = function(){
 	 * there is closing animation
 	 * 
 	 * */
-	View.prototype.close = function(skip_anim) {		
-		if (this.root.dataset.closeAnim && !skip_anim) {
-			if (this.root.dataset.openAnim) {
-				this.root.classList.remove(this.root.dataset.openAnim);
-			}			
-			var closeAnim = this.root.dataset.closeAnim;
-			this.root.classList.add(closeAnim);
-			restartAnimation(this.root);
-			return waitForAnimation(this.root)
-				.then(this.close.bind(this,true));
-		} else {
-			this.root.parentElement.removeChild(this.root);
-			if (this.modal_elem) this.modal_elem.parentElement.removeChild(this.modal_elem);
-			return Promise.resolve();
-		}
+	View.prototype.close = function(skip_anim) {				
+		return removeElement(this.root).then(function() {		
+			if (this.modal_elem) 
+				this.modal_elem.parentElement.removeChild(this.modal_elem);			
+		}.bind(this));
 	}
 
 	///Opens the view as toplevel window
@@ -1135,7 +1146,8 @@ var TemplateJS = function(){
 		"CustomElement":CustomElementEvents,
 		"once":once,
 		"delay":delay,
-		"restartAnimation":restartAnimation
+		"restartAnimation":restartAnimation,
+		"removeElement":removeElement
 	};
 	
 }();
