@@ -609,6 +609,7 @@ var TemplateJS = function(){
 		this.parent.insertBefore(this.anchor, this.baseEl);
 		this.parent.removeChild(this.baseEl);
 		this.name = name;
+		template_el.dataset.group=true;
 		template_el.removeAttribute("data-name");
 		template_el.removeAttribute("name");
 
@@ -801,20 +802,28 @@ var TemplateJS = function(){
 		this.byName = {};
 		
 		this.groups = this.groups.filter(function(x) {return x.isConnectedTo(rootel);});
-		this.groups.forEach(function(x) {this.byName[x.name] = x;},this);
+		this.groups.forEach(function(x) {this.byName[x.name] = [x];},this);
+		
+		function checkSubgroup(el) {
+			while (el && el != rootel) {
+				if (el.dataset.group) return true;
+				el = el.parentElement;
+			}
+			return false;
+		}
 		
 		var elems = rootel.querySelectorAll("[data-name],[name]");
 		var cnt = elems.length;
 		var i;
 		for (i = 0; i < cnt; i++) {
 			var pl = elems[i];
-			if (rootel.contains(pl)) {
+			if (rootel.contains(pl) && !checkSubgroup(pl)) {
 				var name = pl.name || pl.dataset.name || pl.getAttribute("name");
 				name.split(" ").forEach(function(vname) {
 					if (vname) {
 						if (vname && vname.endsWith("[]")) {
 							vname = vname.substr(0,name.length-2);
-							var gm = new GroupManager(pl, name);
+							var gm = new GroupManager(pl, vname);
 							this.groups.push(gm);
 							if (!Array.isArray(this.byName[vname])) this.byName[vname] = [];
 							this.byName[vname].push(gm);
