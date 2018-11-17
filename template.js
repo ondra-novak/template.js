@@ -465,7 +465,7 @@ var TemplateJS = function(){
 		if (this.kbdHandler) return;
 		this.kbdHandler = function(ev) {
 			var x = ev.which || ev.keyCode;
-			if (x == 13 && this.defaultAction) {
+			if (x == 13 && this.defaultAction && ev.target.tagName != "TEXTAREA" && ev.target.tagName != "BUTTON") {
 				if (this.defaultAction(this)) {
 					ev.preventDefault();
 					ev.stopPropagation();
@@ -1004,14 +1004,15 @@ var TemplateJS = function(){
 				while (i < l) {
 					var opt = document.createElement("option");
 					opt.appendChild(document.createTextNode(val[i].toString()));
-					w.appendChild(opt);
+					elem.appendChild(opt);
+					i++;
 				}
 			} else {
 				for (var itm in val) {
 					var opt = document.createElement("option");
 					opt.appendChild(document.createTextNode(val[itm].toString()));
 					opt.setAttribute("value",itm);
-					w.appendChild(opt);				
+					elem.appendChild(opt);				
 				}
 			}
 			elem.value = curVal;
