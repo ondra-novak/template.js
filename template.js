@@ -217,6 +217,14 @@ var TemplateJS = function(){
 		
 	View.prototype.replace = function(view, skip_wait) {
 		
+		if (this.lock_replace) {
+			view.lock_replace = this.lock_replace =  this.lock_replace.then(function(v) {
+				delete view.lock_replace 
+				return v.replace(view,skip_wait);
+			});
+			return this.lock_replace;
+		}
+
 		var nx = this.getRoot().nextSibling;
 		var parent = this.getRoot().parentElement;
 		var newelm = view.getRoot();
@@ -226,12 +234,14 @@ var TemplateJS = function(){
 		
 		if (!skip_wait) {
 			var mark = document.createComment("#");
-			parent.insertBefore(mark,nx);
-			return this.close().then(function(){				
+			parent.insertBefore(mark,nx);			
+			view.lock_replace = this.close().then(function(){				
 				addElement(parent,view.getRoot(), mark);
 				parent.removeChild(mark);
+				delete view.lock_replace;
 				return view;
 			});
+			return view.lock_replace;
 		} else {
 			this.close();
 			addElement(parent,view.getRoot(),nx);
