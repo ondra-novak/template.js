@@ -940,6 +940,8 @@ var TemplateJS = function(){
 		return results;
 	}
 	
+	var event_handlers = new WeakMap();
+	
 	function updateElementAttributes (elem,val) {
 		for (var itm in val) {
 			if (itm == "value") continue;
@@ -951,15 +953,15 @@ var TemplateJS = function(){
 			} else if (itm.substr(0,1) == "!") {
 				var name = itm.substr(1);
 				var fn = val[itm];
-				if (!elem._t_eventHandlers) {
-					elem._t_eventHandlers = {};
+				var eh = event_handlers.get(elem);
+				if (!eh) eh = {};
+				if (eh[name]) {
+					var reg = eh[name];
+					elem.removeEventListener(name,reg);					
 				}
-				if (elem._t_eventHandlers && elem._t_eventHandlers[name]) {
-					var reg = elem._t_eventHandlers[name];
-					elem.removeEventListener(name,reg);
-				}
-				elem._t_eventHandlers[name] = fn;
+				eh[name] = fn;
 				elem.addEventListener(name, fn);
+				event_handlers.set(elem,eh);
 			} else if (itm.substr(0,1) == ".") {				
 				var name = itm.substr(1);
 				var obj = elem;
