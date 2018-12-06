@@ -3,6 +3,14 @@
 var TemplateJS = function(){
 	"use strict";
 
+	///registers to an event for once fire - returns promise
+	/**
+	 * @param element element which to register
+	 * @param name of the event similar to addEventListener
+	 * @param arg arguments passed to the promise when event is fired
+	 * 
+	 * @return Promise object which is resolved once the event triggers
+	 */
 	function once(element, event, args) {
 
 		return new Promise(function(ok) {
@@ -15,6 +23,12 @@ var TemplateJS = function(){
 		});
 	};
 	
+	///Creates a promise which is resolved after some tome
+	/**
+	 * @param time time in milliseconds (same as setTimeout)
+	 * @param arg argument passed to the promise
+	 * @return a Promise resolved after specified time
+	 */
 	function delay(time, arg) {
 		return new Promise(function(ok) {
 			setTimeout(function() {
@@ -23,6 +37,78 @@ var TemplateJS = function(){
 		});
 	};
 	
+
+	
+	///Creates a promise which is resolved once the specified element is added to the DOM
+	/** @param elem element to monitor
+	 *  @param arg arguments passed to the promise once the element is added to the DOM
+	 *  @param timeout count of seconds to wait for render. Default is 10 seconds 
+	 *  @return a Promise resolved once the element is rendered
+	 *  
+	 *  @note The function takes strong reference to the element. To avoid memory leak, there is a timeout
+	 *  in which the element must be rendered (a.k.a. put to the DOM) otherwise, the Promise is rejected
+	 *  
+	 *  You can specify timeout by the timeout argument. Note that the timeout is not exactly in seconds. It
+	 *  defines count of DOM changes rounds, where each round contains all changes made during 1 seconds
+	 *  So if there is no activity in the DOM, the counter is stopped. 
+	 *  This better accomodiate waiting to slow DOM changes and animations, which can cover an
+	 *  animations which takes longer than 10 seconds to play especially, when whole animation is made by CSS
+	 *  and no other DOM changes are made during the play
+	 */
+	function waitForRender(elem, arg, timeout){
+		if (!timeout) timeout = 10;
+		if (elem.isConnected) return Promise.resolve(arg);
+		if (waitForRender_observer == null) {
+			waitForRender_observer = new MutationObserver(waitForRender_callback);				
+			waitForRender_observer.observe(document, 
+				{attributes: false,
+				 childList: true,
+				  characterData: false,
+				   subtree:true});
+		}
+		
+		return new Promise(function(ok, err){
+			
+			waitForRender_list.push({
+				elem:elem,
+				fn:ok,
+				err:err,
+				arg:arg,
+				time:Date.now(),
+				timeouts: timeout
+			});
+		});
+		
+	};
+
+	var waitForRender_list = [];
+	var waitForRender_cnt = 0;
+	var waitForRender_observer = null;
+	var waitForRender_callback = function() {
+		if (waitForRender_list.length == 0) {
+			waitForRender_observer.disconnect();
+			waitForRender_observer = null;
+		} else {
+			var tm = Date.now();
+			waitForRender_list = waitForRender_list.reduce(function(acc,x){				
+				if (x.elem.isConnected) {
+					x.fn(x.arg);
+				} else {
+					if (tm - x.time > 1000) {
+						x.time = tm;
+						if (--x.timeouts <= 0) {
+							x.err(new Error("waitForRender timeout"));
+							return acc;
+						} 
+					} 
+					acc.push(x);
+				}
+				return acc;
+			},[]);
+		}
+	};
+
+
 	
 	function Animation(elem) {
 		this.elem = elem;
@@ -1234,7 +1320,8 @@ var TemplateJS = function(){
 		"delay":delay,
 		"Animation":Animation,
 		"removeElement":removeElement,
-		"addElement":addElement
+		"addElement":addElement,
+		"waitForRender":waitForRender
 	};
 	
 }();
