@@ -381,12 +381,16 @@ var TemplateJS = function(){
 	/** @note visual of toplevel window must be achieved through styles. 
 	 * This function just only adds the view to root of page
 	 * 
+	 * @param elem (optional)if specified, the view is opened under specified element
+	 * 
 	 * @note function also installs focus handler allowing focus cycling by TAB key
 	 */
-	View.prototype.open = function() {
-		document.body.appendChild(this.root);
+	View.prototype.open = function(elem) {
+		if (!elem) elem = document.body;
+		elem.appendChild(this.root);
 		this._installFocusHandler();
 	}
+
 
 	///Opens the view as modal window
 	/**
