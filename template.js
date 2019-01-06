@@ -114,7 +114,6 @@ var TemplateJS = function(){
 	}
 	
 	var waitForRender_list = [];
-	var waitForRender_cnt = 0;
 	var waitForRender_observer = null;
 	var waitForRender_callback = function() {
 		if (waitForRender_list.length == 0) {
@@ -133,6 +132,8 @@ var TemplateJS = function(){
 							return acc;
 						} 
 					} 
+					acc.push(x);
+				} else {
 					acc.push(x);
 				}
 				return acc;
