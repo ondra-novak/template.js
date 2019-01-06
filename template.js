@@ -58,15 +58,7 @@ var TemplateJS = function(){
 	function waitForRender(elem, arg, timeout){
 		if (!timeout) timeout = 10;
 		if (elem.isConnected) return Promise.resolve(arg);
-		if (waitForRender_observer == null) {
-			waitForRender_observer = new MutationObserver(waitForRender_callback);				
-			waitForRender_observer.observe(document, 
-				{attributes: false,
-				 childList: true,
-				  characterData: false,
-				   subtree:true});
-		}
-		
+		init_waitForRender();
 		return new Promise(function(ok, err){
 			
 			waitForRender_list.push({
@@ -75,12 +67,52 @@ var TemplateJS = function(){
 				err:err,
 				arg:arg,
 				time:Date.now(),
-				timeouts: timeout
+				timeouts: timeout,
+				st:true
 			});
 		});
 		
 	};
+	
+	///Creates a promise which is resolved once the specified element is removed from the DOM
+	/** @param elem element to monitor
+	 *  @param arg argument
+	 *  @param timeout specify timeout. If missing, function will never timeout
+	 *  @return a Promise resolved once the element is removed
+	 *  
+	 *  @note function is useful to emulate destructor when the particular element
+	 *  is removed from the DOM
+	 */
+	function waitForRemove(elem, arg, timeout) {
+		if (timeout === undefined) timeout = null;
+		if (!elem.isConnected) return Promise.resolve(arg);
+		init_waitForRender();
+		return new Promise(function(ok, err){
+			
+			waitForRender_list.push({
+				elem:elem,
+				fn:ok,
+				err:err,
+				arg:arg,
+				time:Date.now(),
+				timeouts: timeout,
+				st:false
+			});
+		});
+		
+	}
 
+	function init_waitForRender() {
+		if (waitForRender_observer == null) {
+			waitForRender_observer = new MutationObserver(waitForRender_callback);				
+			waitForRender_observer.observe(document, 
+				{attributes: false,
+				 childList: true,
+				  characterData: false,
+				   subtree:true});
+		}		
+	}
+	
 	var waitForRender_list = [];
 	var waitForRender_cnt = 0;
 	var waitForRender_observer = null;
@@ -91,13 +123,13 @@ var TemplateJS = function(){
 		} else {
 			var tm = Date.now();
 			waitForRender_list = waitForRender_list.reduce(function(acc,x){				
-				if (x.elem.isConnected) {
+				if (x.elem.isConnected  == x.st) {
 					x.fn(x.arg);
-				} else {
+				} else if (x.timeouts !== null) {
 					if (tm - x.time > 1000) {
 						x.time = tm;
 						if (--x.timeouts <= 0) {
-							x.err(new Error("waitForRender timeout"));
+							x.err(new Error("waitForRender/waitForRemove timeout"));
 							return acc;
 						} 
 					} 
@@ -109,6 +141,7 @@ var TemplateJS = function(){
 	};
 
 
+	
 	
 	function Animation(elem) {
 		this.elem = elem;
@@ -1325,7 +1358,8 @@ var TemplateJS = function(){
 		"Animation":Animation,
 		"removeElement":removeElement,
 		"addElement":addElement,
-		"waitForRender":waitForRender
+		"waitForRender":waitForRender,
+		"waitForRemove":waitForRemove
 	};
 	
 }();
