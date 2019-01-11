@@ -230,9 +230,7 @@ var TemplateJS = function(){
 		if (typeof def == "string") {
 			return document.createElement(def);
 		} else if (typeof def == "object") {
-			if ("text" in def) {
-				return document.createTextNode(def.text);
-			} else if ("tag" in def) {
+			if ("tag" in def) {
 				var elem = document.createElement(def.tag);
 				var attrs = def.attrs || def.attributes;
 				if (typeof attrs == "object") {
@@ -251,6 +249,8 @@ var TemplateJS = function(){
 					}
 				}
 				return elem;
+			} else if ("text" in def) {
+				return document.createTextNode(def.text);
 			}
 		}
 		return document.createElement("div");
@@ -271,11 +271,9 @@ var TemplateJS = function(){
 					var x = loadTemplate(item);
 					if (accum === null) accum = x; else accum.appendChild(x);
 					return accum;
-				},null)
+				},document.createDocumentFragment());
 			} else {
-				var res = document.createDocumentFragment();
-				res.appendChild(createElement(templateID));
-				return res;
+				return createElement(templateID);
 			}
 		}
 		var cloned;
@@ -992,25 +990,33 @@ var TemplateJS = function(){
 			if (val instanceof Element) {
 				View.clearContent(elem)
 				elem.appendChild(val);
-				me.rebuildMap();
 				return true;
 			} else if (val instanceof View) {
 				View.clearContent(elem)
 				elem.appendChild(val.getRoot());
-				me.rebuildMap();
 				return true;
 			}			
 		}
+		
+		function isPromise(v) {
+			return (typeof v == "object" && v instanceof Promise);
+		}
+		
 		
 		function processItem(itm, elemArr, val) {
 					elemArr.forEach(function(elem) {
 						var res /* = undefined*/;
 						if (elem) {
+							var eltype = elem.tagName;
+							if (elem.dataset && elem.dataset.type) eltype = elem.dataset.type;			
+							var customEl = eltype && View.customElements[eltype.toUpperCase()];							
 							if (typeof val == "object") {
 								if (checkSpecialValue(val,elem)) {
 									return							
-								} else if (!Array.isArray(val)) {
-									updateElementAttributes(elem,val);
+								} else if (!Array.isArray(val)) {									
+									if (!customEl || !customEl.setAttrs || !customEl.setAttrs(elem,val)) {
+										updateElementAttributes(elem,val);										
+									}
 									if (!("value" in val)) {
 										return;
 									}else {
@@ -1032,15 +1038,16 @@ var TemplateJS = function(){
 								}
 								return group.finish();
 							} else {
-								var eltype = elem.tagName;
-								if (elem.dataset.type) eltype = elem.dataset.type;			
-								if (val !== undefined) {
-									var eltypeuper = eltype.toUpperCase();
-									if (View.customElements[eltypeuper]) {
-										res = View.customElements[eltypeuper].setValue(elem,val);
+								function render_val(val) {
+									if (customEl) {
+										return  customEl.setValue(elem,val);
 									} else {
-										res = updateBasicElement(elem, val);								
-									}
+										return updateBasicElement(elem, val);								
+									}								
+								}
+								if (val !== undefined) {
+									if (isPromise(val)) res = val.then(render_val);
+									else res = render_val(val);
 								}
 							}
 						}
@@ -1053,7 +1060,7 @@ var TemplateJS = function(){
 			var elemArr = this.findElements(itm);
 			if (elemArr) {
 				var val = data[itm];
-				if (typeof val == "object" && (val instanceof Promise)) {
+				if (isPromise(val)) {
 					results.push(val.then(processItem.bind(this,itm,elemArr)));
 				} else {
 					var r = processItem(itm,elemArr,val);
@@ -1307,9 +1314,10 @@ var TemplateJS = function(){
 		return new View(elem);			
 	}
 	
-	function CustomElementEvents(setval,getval) {
+	function CustomElementEvents(setval,getval,setattrs) {
 		this.setValue = setval;
 		this.getValue = getval;
+		this.setAttrs = setattrs;
 		
 	}
 
