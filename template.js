@@ -672,6 +672,7 @@ var TemplateJS = function(){
 	View.prototype._installFocusHandler = function(fn) {
 		if (this.focus_top && this.focus_bottom) {
 			if (this.focus_top.isConnected && this.focus_bottom.isConnected)
+				this.focus_top.focus();
 				return;
 		}
 		var focusHandler = function(where, ev) {
