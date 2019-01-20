@@ -198,6 +198,7 @@ var TemplateJS = function(){
 	 * @return function returns Promise which resolves once the element is removed
 	 */
 	function removeElement(element, skip_anim) {
+		if (!element.isConnected) return Promise.resolve();
 		if (element.dataset.closeAnim && !skip_anim) {			
 			if (element.dataset.openAnim) {
 				element.classList.remove(element.dataset.openAnim);
@@ -404,7 +405,7 @@ var TemplateJS = function(){
 	 * */
 	View.prototype.close = function(skip_anim) {				
 		return removeElement(this.root).then(function() {		
-			if (this.modal_elem) 
+			if (this.modal_elem && this.modal_elem.isConnected) 
 				this.modal_elem.parentElement.removeChild(this.modal_elem);			
 		}.bind(this));
 	}
