@@ -542,9 +542,8 @@ var TemplateJS = function(){
 						if (idx === null) {
 							return gg.reduce(function(sum,item){
 								if (item.findElements)
-									return sum.concat(item.findElements(selector));
-								else 
-									return sum;
+									sum.push.apply(sum,item.findElements(selector));
+								return sum;
 							},[]);						
 						} else {
 							var g = gg[idx];
@@ -776,7 +775,8 @@ var TemplateJS = function(){
 			x.loadTemplate(t);
 		}
 		var res =  x.setData(data);
-		res = this.result.concat(res);		
+		if (res)
+		   this.result.push(res);				 
 	}
 	
 	GroupManager.prototype.findElements = function(selector) {
@@ -784,7 +784,7 @@ var TemplateJS = function(){
 		if (item === null) {
 			var res = [];
 			for (var x in this.idmap) {
-				res = res.concat(this.idmap[x].findElements(selector));
+				res.push.apply(res,this.idmap[x].findElements(selector));
 			}
 			return res;
 		} else {			
@@ -979,10 +979,8 @@ var TemplateJS = function(){
 	 * @param structured data. Promise can be used as value, the value is rendered when the promise
 	 *  is resolved
 	 *  
-	 * @return function returns array results generated during the process. It is
-	 * purposed to return array of promises if any action require to perform operation using
-	 * Promise. If there is no such operation, result is empty array. You can use Promise.all() 
-	 * on result.
+	 * @return Returns Promise which becomes resolved once ale items are set to they
+	 * controls. The delay can happen, when one of the values is a Promise. 
 	 */
 	View.prototype.setData = function(data) {
 		var me = this;
@@ -1006,6 +1004,7 @@ var TemplateJS = function(){
 		
 		
 		function processItem(itm, elemArr, val) {
+					var out = [];
 					elemArr.forEach(function(elem) {
 						var res /* = undefined*/;
 						if (elem) {
@@ -1038,7 +1037,8 @@ var TemplateJS = function(){
 										group.setValue(id, val[i]);
 									}
 								}
-								return group.finish();
+								res = group.finish();
+								out.push.apply(out,res);
 							} else {
 								function render_val(val) {
 									if (customEl) {
@@ -1051,10 +1051,12 @@ var TemplateJS = function(){
 									if (isPromise(val)) res = val.then(render_val);
 									else res = render_val(val);
 								}
+								if (res)
+									out.push(res);;
 							}
 						}
-						return res;
 					});
+					return out;
 		
 		}
 		
@@ -1066,11 +1068,11 @@ var TemplateJS = function(){
 					results.push(val.then(processItem.bind(this,itm,elemArr)));
 				} else {
 					var r = processItem(itm,elemArr,val);
-					if (typeof r != "undefined") results.push(r);
+					results.push.apply(results,r);
 				}
 			}
 		}
-		return results;
+		return Promise.all(results);
 	}
 	
 	var event_handlers = new WeakMap();
