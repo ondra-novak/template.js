@@ -1294,7 +1294,7 @@ var TemplateJS = function(){
 	 */
 	View.fromTemplate = function(id, def) {
 		var t = loadTemplate(id)
-		var el = t.firstChild;
+		var el = t.nodeType == Node.DOCUMENT_FRAGMENT_NODE?t.firstChild:t;
 		var nx = el.nextSibling;
 		if (nx != null) {
 			if (nx.nodeType != Node.TEXT_NODE || nx.textContent.trim().length > 0) {
