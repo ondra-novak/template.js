@@ -150,11 +150,18 @@ var TemplateJS = function(){
 		var computed = window.getComputedStyle(elem, null); 
 		if (computed.animationDuration != "0" && computed.animationDuration != "0s") {
 			this.type =  this.ANIMATION;
+			this.dur = computed.animationDuration;
 		} else if (computed.transitionDuration != "0" && computed.transitionDuration != "0s") {
 			this.type = this.TRANSITION;
+			this.dur = computed.transitionDuration;
 		} else {
 			this.type = this.NOANIM;
+			this.dur = "0s";
 		}	
+		if (this.dur.endsWith("ms")) this.durms = parseInt(this.dur);
+		else if (this.dur.endsWith("s")) this.durms = parseInt(this.dur)*1000;
+		else if (this.dur.endsWith("m")) this.durms = parseInt(this.dur)*60000;
+		else this.durms = 1000;
 	}
 	 Animation.prototype.ANIMATION = 1;
 	 Animation.prototype.TRANSITION = 2;
@@ -179,8 +186,8 @@ var TemplateJS = function(){
 	 Animation.prototype.wait = function(arg) {
 		var res;
 		switch (this.type) {
-			case this.ANIMATION: res = once(this.elem,"animationend");break;
-			case this.TRANSITION: res = once(this.elem,"transitionend");break;
+			case this.ANIMATION: res = Promise.race([delay(this.durms),once(this.elem,"animationend")]);break;
+			case this.TRANSITION: res = Promise.race([delay(this.durms),once(this.elem,"transitionend")]);break;
 			default:
 			case this.NOTHING:res = Promise.resolve();break;
 		}
@@ -200,20 +207,34 @@ var TemplateJS = function(){
 	function removeElement(element, skip_anim) {
 		if (!element.isConnected) return Promise.resolve();
 		if (element.dataset.closeAnim && !skip_anim) {			
-			if (element.dataset.openAnim) {
-				element.classList.remove(element.dataset.openAnim);
+		    var remopen = element.dataset.openAnim;
+			if (remopen && !element.classList.contains(remopen)) {
+					return removeElement(element,true);
 			}			
 			var closeAnim = element.dataset.closeAnim;
-			element.classList.add(closeAnim);
-			var anim = new Animation(element);
-			if (anim.isAnimation()) 
-				anim.restart();				
-			return anim.wait()
-				.then(removeElement.bind(null,element,true));				
+			return waitForDOMUpdate().then(function() {
+				if (remopen) 
+					element.classList.remove(remopen);
+				element.classList.add(closeAnim);
+				var anim = new Animation(element);
+				if (anim.isAnimation()) 
+					anim.restart();				
+				return anim.wait();
+			}).then(function() {
+				return removeElement(element,true);			
+			})
 		} else {
 			element.parentElement.removeChild(element);
 			return Promise.resolve();
 		}		
+	}
+	
+	function waitForDOMUpdate() {
+		return new Promise(function(ok) {
+			window.requestAnimationFrame(function() {
+				window.requestAnimationFrame(ok);
+			});
+		})
 	}
 	
 	function addElement(parent, element, before) {
@@ -221,10 +242,14 @@ var TemplateJS = function(){
 		if (element.dataset.closeAnim) {
 			element.classList.remove(element.dataset.closeAnim);
 		}
+		element.classList.remove(element.dataset.openAnim);
+		parent.insertBefore(element,before);
+		window.getComputedStyle(element);
 		if (element.dataset.openAnim) {
-			element.classList.add(element.dataset.openAnim);
+			waitForDOMUpdate().then(function() {
+				element.classList.add(element.dataset.openAnim);				
+			});
 		}
-		parent.insertBefore(element,before);		
 	}
 	
 	function createElement(def) {
@@ -420,7 +445,7 @@ var TemplateJS = function(){
 	 */
 	View.prototype.open = function(elem) {
 		if (!elem) elem = document.body;
-		elem.appendChild(this.root);
+		addElement(elem,this.root);
 		this._installFocusHandler();
 	}
 
