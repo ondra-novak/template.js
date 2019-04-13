@@ -325,7 +325,7 @@ var TemplateJS = function(){
 		this.groups =[];
 		this.rebuildMap();
 		//apply any animation now
-		if (this.root.dataset.openAnim) {
+		if (this.root.dataset && this.root.dataset.openAnim) {
 			this.root.classList.add(this.root.dataset.openAnim);
 		}
 		
@@ -729,13 +729,13 @@ var TemplateJS = function(){
 		if (firstElement && lastElement) {
 			var le = document.createElement("focus-end");
 			le.setAttribute("tabindex",highestTabIndex);
-			le.style.display="block";
+			le.style.display="inline-block";
 			this.root.appendChild(le);
 			le.addEventListener("focus", focusHandler.bind(this,firstElement));
 	
 			var fe = document.createElement("focus-begin");
 			fe.setAttribute("tabindex",highestTabIndex);
-			fe.style.display="block";
+			fe.style.display="inline-block";
 			this.root.insertBefore(fe,this.root.firstChild);
 			fe.addEventListener("focus", focusHandler.bind(this,lastElement));
 			
