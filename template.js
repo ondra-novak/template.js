@@ -224,7 +224,9 @@ var TemplateJS = function(){
 				return removeElement(element,true);			
 			})
 		} else {
+			var event = new Event("remove");
 			element.parentElement.removeChild(element);
+			element.dispatchEvent(event);
 			return Promise.resolve();
 		}		
 	}
@@ -428,7 +430,7 @@ var TemplateJS = function(){
 	 * there is closing animation
 	 * 
 	 * */
-	View.prototype.close = function(skip_anim) {				
+	View.prototype.close = function(skip_anim) {
 		return removeElement(this.root).then(function() {		
 			if (this.modal_elem && this.modal_elem.isConnected) 
 				this.modal_elem.parentElement.removeChild(this.modal_elem);			
@@ -1385,6 +1387,7 @@ var TemplateJS = function(){
 	View.lightbox_style = "background-color:black;opacity:0.25";
 	///Lightbox class, if defined, style is ignored
 	View.lightbox_class = "";
+
 	
 	
 	return {
