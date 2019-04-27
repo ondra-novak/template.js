@@ -158,9 +158,9 @@ var TemplateJS = function(){
 			this.type = this.NOANIM;
 			this.dur = "0s";
 		}	
-		if (this.dur.endsWith("ms")) this.durms = parseInt(this.dur);
-		else if (this.dur.endsWith("s")) this.durms = parseInt(this.dur)*1000;
-		else if (this.dur.endsWith("m")) this.durms = parseInt(this.dur)*60000;
+		if (this.dur.endsWith("ms")) this.durms = parseFloat(this.dur);
+		else if (this.dur.endsWith("s")) this.durms = parseFloat(this.dur)*1000;
+		else if (this.dur.endsWith("m")) this.durms = parseFloat(this.dur)*60000;
 		else this.durms = 1000;
 	}
 	 Animation.prototype.ANIMATION = 1;
@@ -618,6 +618,9 @@ var TemplateJS = function(){
 		this.marked = [];
 	};
 	
+	View.prototype.anyMarked = function() {
+		return this.marked.length > 0;
+	}
 	///Installs keyboard handler for keys ESC and ENTER
 	/**
 	 * This function is called by setDefaultAction or setCancelAction, do not call directly
@@ -1320,16 +1323,18 @@ var TemplateJS = function(){
 	 *  @return newly created view
 	 */
 	View.fromTemplate = function(id, def) {
-		var t = loadTemplate(id)
-		var el = t.nodeType == Node.DOCUMENT_FRAGMENT_NODE?t.firstChild:t;
-		var nx = el.nextSibling;
-		if (nx != null) {
-			if (nx.nodeType != Node.TEXT_NODE || nx.textContent.trim().length > 0) {
-				el = createElement(def);
-				el.appendChild(t);				
+		var t = loadTemplate(id);		
+		if (t.nodeType == Node.DOCUMENT_FRAGMENT_NODE) {
+			var x = t.firstElementChild;
+			if (x != null && x.nextElementSibling == null) {
+				t = x;
+			} else {
+				var el = createElement(def);
+				el.appendChild(t);
+				t = el;
 			}
 		}
-		return new View(el);
+		return new View(t);
 	}
 
 	View.createFromTemplate = View.fromTemplate;
