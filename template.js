@@ -605,7 +605,13 @@ var TemplateJS = function(){
 			this.marked.push(items[i]);
 		}				
 	};
-		
+			
+
+	View.prototype.forEachElement = function(selector, fn, a, b) {
+		var items = this.findElements(selector);
+		items.forEach(fn, a, b);
+	}
+
 	
 	///Removes all marks
 	/** Useful to remove any highlight in the View
@@ -734,13 +740,11 @@ var TemplateJS = function(){
 		if (firstElement && lastElement) {
 			var le = document.createElement("focus-end");
 			le.setAttribute("tabindex",highestTabIndex);
-			le.style.display="inline-block";
 			this.root.appendChild(le);
 			le.addEventListener("focus", focusHandler.bind(this,firstElement));
 	
 			var fe = document.createElement("focus-begin");
 			fe.setAttribute("tabindex",highestTabIndex);
-			fe.style.display="inline-block";
 			this.root.insertBefore(fe,this.root.firstChild);
 			fe.addEventListener("focus", focusHandler.bind(this,lastElement));
 			
@@ -1025,7 +1029,11 @@ var TemplateJS = function(){
 				View.clearContent(elem)
 				elem.appendChild(val.getRoot());
 				return true;
-			}			
+			} else if (val instanceof Date && elem.type == "date") {
+				elem.valueAsDate = val;
+				return true;
+			}
+
 		}
 		
 		function isPromise(v) {
@@ -1041,7 +1049,7 @@ var TemplateJS = function(){
 							var eltype = elem.tagName;
 							if (elem.dataset && elem.dataset.type) eltype = elem.dataset.type;			
 							var customEl = eltype && View.customElements[eltype.toUpperCase()];							
-							if (typeof val == "object") {
+							if (typeof val == "object" && val !== null) {
 								if (checkSpecialValue(val,elem)) {
 									return							
 								} else if (!Array.isArray(val)) {									
@@ -1167,6 +1175,8 @@ var TemplateJS = function(){
 			} else if (typeof (val) == "string") {
 				elem.checked = elem.value == val;
 			} 
+		} else if (type == "date" && typeof val == "object" && val instanceof Date) {
+			elem.valueAsDate = val;
 		} else {
 			elem.value = val;
 		}
@@ -1266,6 +1276,10 @@ var TemplateJS = function(){
 		} else if (type == "radio") {
 			if (elem.checked) return elem.value;
 			else return curVal;
+		} else if (type == "number") {
+			return elem.valueAsNumber;		
+		} else if (type == "date") {
+			return	elem.valueAsDate;
 		} else {
 			return elem.value;
 		}
@@ -1405,10 +1419,10 @@ var TemplateJS = function(){
 		"removeElement":removeElement,
 		"addElement":addElement,
 		"waitForRender":waitForRender,
-		"waitForRemove":waitForRemove
+		"waitForRemove":waitForRemove,
+		"waitForDOMUpdate":waitForDOMUpdate
 	};
 	
 }();
-
 
 
